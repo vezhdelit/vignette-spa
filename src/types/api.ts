@@ -181,7 +181,13 @@ export interface CreateOrderProduct {
   period: string
   start_date: number
   flex?: { type: "default" | "expanded"; enabled: boolean }
-  custom_id?: string
+  /**
+   * REQUIRED in practice: /public/me/orders pins order_has_been_paid: false,
+   * and validatePartnerCustomIds rejects unpaid products without one
+   * ("Custom id is required if order_has_been_paid set to false"). Must be
+   * unique per partner — use a fresh UUID per attempt.
+   */
+  custom_id: string
 }
 
 export interface CreateOrderBody {
@@ -206,9 +212,21 @@ export interface CreateOrderBody {
   }
 }
 
+/**
+ * POST /public/me/orders returns slim order stubs, not the full read shape —
+ * verified live: { id, custom_id, currency, profit, vat_fee, flex }. Fetch
+ * GET /public/me/orders/:id for the full order.
+ */
+export interface CreatedOrderStub {
+  id: string
+  custom_id: string
+  currency?: string
+  flex?: { type?: string; enabled?: boolean; price?: number } | null
+}
+
 export interface CreateOrderResult {
   user_id: string
-  orders: Order[]
+  orders: CreatedOrderStub[]
   payment_link: string
 }
 

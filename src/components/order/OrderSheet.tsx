@@ -31,7 +31,7 @@ import { useAuthStore } from "@/stores/auth"
 import { useCatalogStore } from "@/stores/catalog"
 import { useOrdersStore } from "@/stores/orders"
 import { cn } from "@/lib/utils"
-import type { CatalogProduct, Order } from "@/types/api"
+import type { CatalogProduct } from "@/types/api"
 
 type Step = "order" | "confirm" | "creating" | "paying" | "done"
 
@@ -71,7 +71,8 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   })
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null)
   const [paymentLink, setPaymentLink] = useState<string | null>(null)
-  const [createdOrder, setCreatedOrder] = useState<Order | null>(null)
+  // just the id — POST returns a slim stub; the poll fetches the full order
+  const [createdOrder, setCreatedOrder] = useState<{ id: string } | null>(null)
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // popularity order (matches the app), skipping periods flagged "disabled"
@@ -203,6 +204,10 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
               period: period!,
               start_date: isToday ? Math.floor(Date.now() / 1000) : startDate,
               flex: { type: flexType, enabled: flexEnabled },
+              // mandatory for unpaid orders (/me pins order_has_been_paid:
+              // false) and must be globally unique per partner — fresh UUID
+              // per attempt (services/partner-order.js#validatePartnerCustomIds)
+              custom_id: crypto.randomUUID(),
             },
           ],
           ...(isGuest ? { email: email.trim() } : {}),

@@ -68,7 +68,11 @@ pure browser SPA.
 | Catalog | `GET catalog/products`, `catalog/products/flex` | Vignettes tab / order sheet |
 
 Contract details honored (per `vignette.id/docs/auth/integration-guide.md` +
-controller source): refresh is single-flight and never retried with the same
+controller source): every `products[]` entry sends a fresh UUID `custom_id` —
+mandatory for unpaid orders (`/me` pins `order_has_been_paid: false`) and
+unique per partner; the create response's `orders[]` are slim stubs (`id`,
+`custom_id`, pricing), so the app polls `GET orders/:id` for the full shape;
+refresh is single-flight and never retried with the same
 token after a lost response (rotation reuse revokes the family); per-period
 restrictions `vin_code_required` (9/17 alnum), `driver_info_required`
 (`user.user_name`/`passport_number`/`passport_country`), `from-tomorrow`

@@ -87,9 +87,14 @@ restrictions `vin_code_required` (9/17 alnum), `driver_info_required`
   `disabled` are hidden; `vin_code_required` makes the VIN input mandatory
   (9 or 17 alphanumerics); `driver_info_required` (Moldova) reveals a
   driver-details card and sends the `user` object.
-- `PAY` posts the order, opens `payment_link` in a new tab, and polls
-  `GET /public/me/orders/:id` every 4s until the status leaves `CREATED`,
-  then shows the "Payment received" screen.
+- `PAY` posts the order and renders `payment_link` in an **in-sheet iframe
+  modal** (the pay page ships `Content-Security-Policy: frame-ancestors *`
+  for exactly this embedded use), while polling
+  `GET /public/me/orders/:id` every 4s in the background; the moment the
+  status leaves `CREATED` the modal is replaced by the "Payment received"
+  screen. Closing the modal abandons checkout (the order stays `CREATED` and
+  shows as "Awaiting payment" on Home). An open-in-browser fallback sits in
+  the modal header.
 - Home polls the orders list every 20s while any order is CREATED/PENDING
   (the "Processing (~15m)" card) so it flips to active on its own.
 

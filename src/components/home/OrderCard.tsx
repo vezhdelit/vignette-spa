@@ -94,10 +94,22 @@ function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : "Something went wrong"
 }
 
-export function OrderCard({ order }: { order: Order }) {
+export function OrderCard({
+  order,
+  onPay,
+}: {
+  order: Order
+  /** open the payment modal for this unpaid order (Home provides the drawer) */
+  onPay?: (order: Order) => void
+}) {
   const [expanded, setExpanded] = useState(false)
   const [dialog, setDialog] = useState<"modify" | "transfer" | "refund" | null>(null)
   const guest = useAuthStore((s) => s.user?.guest ?? true)
+
+  // unpaid — the only sensible action is finishing the payment, so the card
+  // offers exactly that instead of the transfer/modify/pdf section
+  const awaitingPayment = order.status === "CREATED"
+  const canPay = awaitingPayment && Boolean(order.payment_link) && onPay
 
   const theme = statusTheme(order)
   const car = order.cars[0]
@@ -147,10 +159,14 @@ export function OrderCard({ order }: { order: Order }) {
         <div className="h-2.5" />
       )}
 
-      {/* white inner card — tap to expand actions */}
+      {/* white inner card — tap to expand actions (or straight to payment) */}
       <button
         type="button"
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() =>
+          awaitingPayment
+            ? canPay && onPay?.(order)
+            : setExpanded((v) => !v)
+        }
         className="block w-full rounded-[22px] bg-white p-4 text-left"
       >
         <div className="flex items-start gap-3">
@@ -182,10 +198,15 @@ export function OrderCard({ order }: { order: Order }) {
             {formatEndDate(order.end_date)}
           </span>
         </p>
+        {canPay && (
+          <span className="mt-3 block w-full rounded-2xl bg-mint py-3 text-center text-[15px] font-extrabold tracking-[0.2em] text-white uppercase">
+            Complete payment
+          </span>
+        )}
       </button>
 
-      {/* expandable actions */}
-      {expanded && (
+      {/* expandable actions — pointless while the order is unpaid */}
+      {expanded && !awaitingPayment && (
         <div className="px-1.5 pt-3 pb-1">
           <div className="flex flex-wrap gap-2">
             <ActionChip
@@ -267,8 +288,12 @@ export function OrderCard({ order }: { order: Order }) {
           </span>
           <button
             type="button"
-            aria-label="Details"
-            onClick={() => setExpanded((v) => !v)}
+            aria-label={awaitingPayment ? "Complete payment" : "Details"}
+            onClick={() =>
+              awaitingPayment
+                ? canPay && onPay?.(order)
+                : setExpanded((v) => !v)
+            }
             className="text-navy/70"
           >
             <Info className="size-6" />

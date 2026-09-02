@@ -160,6 +160,8 @@ export interface Order {
   modify?: OrderAction
   full_refund?: RefundAction
   partial_refund?: RefundAction
+  /** CREATED (unpaid) orders only: the checkout URL — reopen it to finish paying */
+  payment_link?: string
 }
 
 export interface OrderChange {

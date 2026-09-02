@@ -5,11 +5,11 @@ import {
   ChevronDown,
   CircleQuestionMark,
   Pencil,
-  TriangleAlert,
   CalendarDays,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer"
+import { DoneScreen, PaymentModal } from "@/components/order/PaymentDrawer"
 import { productBadge, tileColor } from "@/components/vignettes/ProductCard"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -225,8 +225,9 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
         options
       )
       setCreatedOrder(result.orders[0] ?? null)
+      // shown in an in-sheet iframe (the pay page ships
+      // `frame-ancestors *` exactly for this embedded-webview use)
       setPaymentLink(result.payment_link)
-      window.open(result.payment_link, "_blank", "noopener")
       setStep("paying")
     } catch (e) {
       if (
@@ -271,7 +272,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
 
         {step === "creating" && <CreatingScreen />}
         {step === "paying" && (
-          <PayingScreen paymentLink={paymentLink} onDone={() => setStep("done")} />
+          <PaymentModal paymentLink={paymentLink} onClose={finish} />
         )}
         {step === "done" && <DoneScreen onFinish={finish} />}
 
@@ -931,73 +932,6 @@ function CreatingScreen() {
   )
 }
 
-function PayingScreen({
-  paymentLink,
-  onDone,
-}: {
-  paymentLink: string | null
-  onDone: () => void
-}) {
-  return (
-    <div className="flex min-h-[86dvh] flex-col items-center justify-center gap-6 px-8 text-center">
-      <span className="relative flex size-28 items-center justify-center rounded-full bg-mint shadow-[0_0_60px_rgba(69,217,161,0.5)]">
-        <span className="size-12 animate-spin rounded-full border-4 border-transparent border-t-white" />
-      </span>
-      <p className="text-xl font-semibold text-white">Waiting for your payment…</p>
-      <p className="text-[15px] font-medium text-white/85">
-        Complete the payment in the tab that just opened. This screen updates
-        automatically once the payment lands.
-      </p>
-      {paymentLink && (
-        <a
-          href={paymentLink}
-          target="_blank"
-          rel="noreferrer"
-          className="rounded-full bg-white/25 px-5 py-2.5 text-[15px] font-bold text-white"
-        >
-          Reopen payment page
-        </a>
-      )}
-      <button
-        type="button"
-        onClick={onDone}
-        className="text-sm font-semibold text-white/70 underline"
-      >
-        I've already paid
-      </button>
-    </div>
-  )
-}
-
-function DoneScreen({ onFinish }: { onFinish: () => void }) {
-  return (
-    <div className="flex min-h-[86dvh] flex-col px-5 pb-6">
-      <div className="flex flex-1 flex-col items-center justify-center gap-6 text-center">
-        <span className="flex size-28 items-center justify-center rounded-full bg-mint shadow-[0_0_60px_rgba(69,217,161,0.45)]">
-          <Check className="size-14 text-white" strokeWidth={3} />
-        </span>
-        <div>
-          <p className="text-[26px] font-extrabold text-white">Payment received</p>
-          <p className="mt-2 text-[17px] font-medium text-white/90">
-            Payment has been successfully accepted and will be processed within
-            the next 3–5 minutes.
-          </p>
-        </div>
-        <p className="flex items-center gap-3 rounded-2xl bg-pink px-4 py-3.5 text-left text-[15px] font-bold text-white">
-          <TriangleAlert className="size-6 shrink-0" />
-          Driving without an active vignette will result in a FINE TICKET
-        </p>
-      </div>
-      <button
-        type="button"
-        onClick={onFinish}
-        className="w-full rounded-2xl bg-mint py-4 text-lg font-extrabold tracking-[0.2em] text-white uppercase transition active:scale-[0.98]"
-      >
-        Go to my vignettes
-      </button>
-    </div>
-  )
-}
 
 function toDateInput(unixSeconds: number): string {
   const d = new Date(unixSeconds * 1000)

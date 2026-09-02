@@ -1,10 +1,12 @@
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuthStore } from "@/stores/auth"
 import { useOrdersStore } from "@/stores/orders"
 import { OrderCard } from "@/components/home/OrderCard"
 import { OrderCardSkeleton } from "@/components/home/OrderCardSkeleton"
 import { BuyNowCard } from "@/components/home/BuyNowCard"
+import { PaymentDrawer } from "@/components/order/PaymentDrawer"
+import type { Order } from "@/types/api"
 
 const HIDDEN_STATUSES = new Set(["DELETED", "UNPAID DELETED", "USER DELETED", "UNDEFINED"])
 
@@ -13,6 +15,8 @@ export function HomePage() {
   const authStatus = useAuthStore((s) => s.status)
   const { orders, pages, loading, loaded, error, load, loadMore } =
     useOrdersStore()
+  // "Awaiting payment" card tapped — reopen its checkout in the modal
+  const [paying, setPaying] = useState<Order | null>(null)
 
   useEffect(() => {
     // orders.load() creates a guest session on its own if none exists yet
@@ -56,7 +60,7 @@ export function HomePage() {
       ) : (
         <>
           {visible.map((order) => (
-            <OrderCard key={order.id} order={order} />
+            <OrderCard key={order.id} order={order} onPay={setPaying} />
           ))}
           {pages.current < pages.total && (
             <button
@@ -69,6 +73,13 @@ export function HomePage() {
           )}
         </>
       )}
+
+      <PaymentDrawer
+        orderId={paying?.id ?? null}
+        paymentLink={paying?.payment_link ?? null}
+        open={paying !== null}
+        onClose={() => setPaying(null)}
+      />
     </div>
   )
 }

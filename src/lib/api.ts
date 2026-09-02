@@ -24,14 +24,24 @@ export class ApiRequestError extends Error {
   type: string
   field?: string
   status: number
+  /** seconds, from the Retry-After header on 429s */
+  retryAfter?: number
 
-  constructor(status: number, error: ApiError | null) {
+  constructor(status: number, error: ApiError | null, retryAfter?: number) {
     super(error?.message || `Request failed (${status})`)
     this.name = "ApiRequestError"
     this.status = status
     this.type = error?.type || "unknown_error"
     this.field = error?.field
+    this.retryAfter = retryAfter
   }
+}
+
+function retryAfterSeconds(res: Response): number | undefined {
+  const raw = res.headers.get("Retry-After")
+  if (!raw) return undefined
+  const seconds = parseInt(raw, 10)
+  return Number.isFinite(seconds) ? seconds : undefined
 }
 
 export interface StoredTokens {
@@ -89,7 +99,11 @@ async function refreshAccessToken(): Promise<string | null> {
       hooks?.onTokens(body.result)
       return body.result.access_token
     } catch {
-      // network hiccup — keep the session, caller will surface the failure
+      // The response was lost after the request may have gone out. Refresh
+      // tokens are single-use with family revocation on reuse (integration
+      // guide: "never retry a refresh request with the same token after a
+      // timeout"), so the only safe move is to drop the session.
+      hooks?.onSessionLost()
       return null
     } finally {
       refreshInFlight = null
@@ -160,9 +174,10 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   try {
     envelope = (await res.json()) as ApiEnvelope<T>
   } catch {
-    throw new ApiRequestError(res.status, null)
+    throw new ApiRequestError(res.status, null, retryAfterSeconds(res))
   }
 
+  // 202 (e.g. social verify → email_required) is a success envelope
   if (!res.ok || envelope.error) {
     // one reactive refresh+retry on an expired/invalid access token
     if (
@@ -178,7 +193,7 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     if (res.status === 401 && envelope.error?.type === "session_revoked") {
       hooks?.onSessionLost()
     }
-    throw new ApiRequestError(res.status, envelope.error)
+    throw new ApiRequestError(res.status, envelope.error, retryAfterSeconds(res))
   }
 
   return envelope

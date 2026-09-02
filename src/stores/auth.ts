@@ -2,12 +2,18 @@ import { create } from "zustand"
 import { persist } from "zustand/middleware"
 import { api, apiResult, configureApi, type StoredTokens } from "@/lib/api"
 import type {
+  EmailRequiredResult,
   Me,
   OtpStartResult,
   SessionInfo,
   TokenPayload,
   TokenUser,
 } from "@/types/api"
+
+/** 200 → tokens (signed in); 202 → email_required (finish via linkSocialEmail) */
+export type SocialVerifyResult =
+  | { status: "ok" }
+  | { status: "email_required"; linkToken: string; expiresIn: number }
 
 interface AuthState {
   tokens: StoredTokens | null
@@ -22,6 +28,19 @@ interface AuthState {
   continueAsGuest: () => Promise<void>
   startOtp: (email: string) => Promise<OtpStartResult>
   verifyOtp: (challengeId: string, code: string) => Promise<void>
+  /** POST /public/auth/nonce — single-use, 5-min TTL, bound to this client */
+  fetchNonce: () => Promise<string>
+  verifySocial: (
+    provider: "apple" | "google",
+    token: string,
+    nonce: string
+  ) => Promise<SocialVerifyResult>
+  /** completes a 202 email_required: link_token + the OTP challenge result */
+  linkSocialEmail: (args: {
+    linkToken: string
+    challengeId: string
+    code: string
+  }) => Promise<void>
   refreshMe: () => Promise<void>
   fetchSessions: () => Promise<SessionInfo[]>
   logout: () => Promise<void>
@@ -103,6 +122,57 @@ export const useAuthStore = create<AuthState>()(
           },
           auth: false,
         })
+        set({ tokens: toStoredTokens(result), user: result.user, me: null })
+        void get().refreshMe()
+      },
+
+      async fetchNonce() {
+        const result = await apiResult<{ nonce: string; expires_in: number }>(
+          "/public/auth/nonce",
+          { method: "POST", auth: false }
+        )
+        return result.nonce
+      },
+
+      async verifySocial(provider, token, nonce) {
+        const body =
+          provider === "apple"
+            ? { identity_token: token, nonce, device_name: deviceName() }
+            : { id_token: token, nonce, device_name: deviceName() }
+
+        const result = await apiResult<TokenPayload | EmailRequiredResult>(
+          `/public/auth/${provider}/verify`,
+          { method: "POST", body, auth: false }
+        )
+
+        if ("status" in result && result.status === "email_required") {
+          return {
+            status: "email_required",
+            linkToken: result.link_token,
+            expiresIn: result.expires_in,
+          }
+        }
+
+        const tokens = result as TokenPayload
+        set({ tokens: toStoredTokens(tokens), user: tokens.user, me: null })
+        void get().refreshMe()
+        return { status: "ok" }
+      },
+
+      async linkSocialEmail({ linkToken, challengeId, code }) {
+        const result = await apiResult<TokenPayload>(
+          "/public/auth/social/link-email",
+          {
+            method: "POST",
+            body: {
+              link_token: linkToken,
+              challenge_id: challengeId,
+              code,
+              device_name: deviceName(),
+            },
+            auth: false,
+          }
+        )
         set({ tokens: toStoredTokens(result), user: result.user, me: null })
         void get().refreshMe()
       },

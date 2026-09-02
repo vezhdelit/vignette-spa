@@ -13,6 +13,8 @@ interface CatalogState {
 
   load: () => Promise<void>
   productsFor: (country: string) => CatalogProduct[]
+  /** the tier flagged is_default by GET /public/catalog/products/flex */
+  defaultFlexType: () => "default" | "expanded"
 }
 
 export const useCatalogStore = create<CatalogState>()((set, get) => ({
@@ -58,6 +60,11 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
         error: e instanceof Error ? e.message : "Failed to load catalog",
       })
     }
+  },
+
+  defaultFlexType() {
+    const flagged = get().flexOptions.find((f) => f.is_default)?.type
+    return flagged === "expanded" ? "expanded" : "default"
   },
 
   productsFor(country: string) {

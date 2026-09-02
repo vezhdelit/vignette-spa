@@ -25,7 +25,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { PlateBadge } from "@/components/order/PlateBadge"
 import { FlagRect } from "@/lib/countries"
 import { COUNTRY_NAMES, PLATE_COUNTRIES, Flag } from "@/lib/countries"
-import { formatDotDateTime, formatDotDate, periodLabel } from "@/lib/format"
+import { formatDotDateTime, formatEndDate, periodLabel } from "@/lib/format"
 import { apiBlob, ApiRequestError } from "@/lib/api"
 import { useOrdersStore } from "@/stores/orders"
 import { useAuthStore } from "@/stores/auth"
@@ -41,7 +41,15 @@ interface StatusTheme {
 
 function statusTheme(order: Order): StatusTheme {
   switch (order.status) {
+    // CREATED = unpaid, awaiting the payment webhook — a failed/abandoned
+    // payment never changes it, so don't dress it up as "processing"
     case "CREATED":
+      return {
+        wrapper: "bg-[#d7dee6]",
+        banner: "Awaiting payment!\nThe payment was not completed for this order",
+        bannerClass: "text-navy",
+        dot: "bg-slate-400",
+      }
     case "PENDING":
       return {
         wrapper: "bg-sun",
@@ -171,8 +179,7 @@ export function OrderCard({ order }: { order: Order }) {
           <span className="font-bold text-navy">{formatDotDateTime(order.start_date)}</span>
           <span className="text-navy-soft"> until </span>
           <span className="font-bold text-mint-deep">
-            {formatDotDate(order.end_date)}{" "}
-            {order.end_date ? "23:59" : ""}
+            {formatEndDate(order.end_date)}
           </span>
         </p>
       </button>

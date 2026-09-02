@@ -1,5 +1,5 @@
 import { create } from "zustand"
-import { apiResult } from "@/lib/api"
+import { api, apiResult } from "@/lib/api"
 import type {
   CreateOrderBody,
   CreateOrderResult,
@@ -7,14 +7,40 @@ import type {
   OrderChange,
 } from "@/types/api"
 
+/** valid keys for the ?status CSV filter (repositories/orders.js AUTH_STATUS_KEYS) */
+export type OrderStatusKey =
+  | "created"
+  | "pending"
+  | "deferred"
+  | "will_be_active"
+  | "active"
+  | "expired"
+  | "refunded"
+  | "deleted"
+
+interface LoadOptions {
+  silent?: boolean
+  /** append this page instead of replacing (load-more) */
+  page?: number
+  /** CSV filter — omit for all statuses */
+  statuses?: OrderStatusKey[]
+  /** partner clients: whole account instead of partner-scoped (needs consent) */
+  scope?: "all"
+}
+
 interface OrdersState {
   orders: Order[]
+  pages: { total: number; current: number }
   loading: boolean
   loaded: boolean
   error: string | null
 
-  load: (options?: { silent?: boolean }) => Promise<void>
-  create: (body: CreateOrderBody) => Promise<CreateOrderResult>
+  load: (options?: LoadOptions) => Promise<void>
+  loadMore: () => Promise<void>
+  create: (
+    body: CreateOrderBody,
+    options?: { allowDuplication?: boolean }
+  ) => Promise<CreateOrderResult>
   getOrder: (id: string) => Promise<Order>
   modify: (
     id: string,
@@ -32,17 +58,33 @@ interface OrdersState {
 
 export const useOrdersStore = create<OrdersState>()((set, get) => ({
   orders: [],
+  pages: { total: 1, current: 1 },
   loading: false,
   loaded: false,
   error: null,
 
   async load(options = {}) {
     if (get().loading) return
+    const page = options.page ?? 1
     set({ loading: !options.silent, error: null })
     try {
-      // first page is enough for the home screen; page size is 15 server-side
-      const orders = await apiResult<Order[]>("/public/me/orders")
-      set({ orders, loading: false, loaded: true })
+      const envelope = await api<Order[]>("/public/me/orders", {
+        query: {
+          page,
+          status: options.statuses?.length
+            ? options.statuses.join(",")
+            : undefined,
+          scope: options.scope,
+        },
+      })
+      const pages = envelope.pages ?? { total: 1, current: page }
+      set({
+        orders:
+          page > 1 ? [...get().orders, ...envelope.result] : envelope.result,
+        pages,
+        loading: false,
+        loaded: true,
+      })
     } catch (e) {
       set({
         loading: false,
@@ -52,10 +94,19 @@ export const useOrdersStore = create<OrdersState>()((set, get) => ({
     }
   },
 
-  async create(body) {
+  async loadMore() {
+    const { pages } = get()
+    if (pages.current >= pages.total) return
+    await get().load({ page: pages.current + 1, silent: true })
+  },
+
+  async create(body, options = {}) {
     const result = await apiResult<CreateOrderResult>("/public/me/orders", {
       method: "POST",
       body,
+      // skips checkPartnerDuplicateOrders — offered after a
+      // pending/active/approved_orders rejection
+      query: options.allowDuplication ? { allow_duplication: true } : undefined,
     })
     void get().load({ silent: true })
     return result
@@ -104,6 +155,12 @@ export const useOrdersStore = create<OrdersState>()((set, get) => ({
   },
 
   reset() {
-    set({ orders: [], loading: false, loaded: false, error: null })
+    set({
+      orders: [],
+      pages: { total: 1, current: 1 },
+      loading: false,
+      loaded: false,
+      error: null,
+    })
   },
 }))

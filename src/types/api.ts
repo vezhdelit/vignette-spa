@@ -146,7 +146,9 @@ export interface Order {
   purchase_date: number | null
   start_from: number | null
   start_date: number | null
-  end_date: number | null
+  /** unix seconds, or the string "YYYY-MM-DD 23:59" for products without a
+   *  unix validity window (helpers/order-status.js#prepareDates), or null */
+  end_date: number | string | null
   period: string | number
   type: string
   country: string
@@ -190,11 +192,16 @@ export interface CreateOrderBody {
   open_order_details_by_default?: boolean
   email?: string
   installation_id?: string
-  /** driver-info products (e.g. Moldova): required when the selected period carries "driver_info_required" */
+  /**
+   * Driver-info products (e.g. Moldova): required when the selected period
+   * carries "driver_info_required". Field names per
+   * services/partner-order.js#validatePartnerDriverInfo — user_name,
+   * passport_number, passport_country.
+   */
   user?: {
-    full_name: string
+    user_name: string
     passport_number: string
-    phone_number: string
+    passport_country: string
     email?: string
   }
 }

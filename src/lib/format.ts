@@ -33,6 +33,25 @@ export function formatDotDate(unixSeconds: number | null | undefined): string {
   return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}`
 }
 
+/**
+ * Order end_date is either unix seconds or the literal string
+ * "YYYY-MM-DD 23:59" (products without a unix validity window).
+ * Returns "02.10 23:59"-style text either way.
+ */
+export function formatEndDate(endDate: number | string | null | undefined): string {
+  if (endDate === null || endDate === undefined) return "—"
+  if (typeof endDate === "number") return `${formatDotDate(endDate)} 23:59`
+  const match = String(endDate).match(/^(\d{4})-(\d{2})-(\d{2})(?:\s+(.*))?$/)
+  if (match) return `${match[3]}.${match[2]} ${match[4] ?? ""}`.trim()
+  return String(endDate)
+}
+
+/** Wallet balance/bonuses and referral income arrive as integer cents. */
+export function formatCents(cents: number, currency = "EUR"): string {
+  const symbol = currency === "EUR" ? "€" : currency
+  return `${(cents / 100).toFixed(2)} ${symbol}`
+}
+
 export function formatMoney(amount: number, currency = "EUR"): string {
   const symbol = currency === "EUR" ? "€" : currency
   // trim trailing zeros but keep up to 2 decimals: 14.95 €, 9.7 €, 3 €

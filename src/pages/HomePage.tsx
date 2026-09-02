@@ -11,7 +11,8 @@ const HIDDEN_STATUSES = new Set(["DELETED", "UNPAID DELETED", "USER DELETED", "U
 export function HomePage() {
   const navigate = useNavigate()
   const authStatus = useAuthStore((s) => s.status)
-  const { orders, loading, loaded, error, load } = useOrdersStore()
+  const { orders, pages, loading, loaded, error, load, loadMore } =
+    useOrdersStore()
 
   useEffect(() => {
     // orders.load() creates a guest session on its own if none exists yet
@@ -53,7 +54,20 @@ export function HomePage() {
       ) : visible.length === 0 ? (
         <BuyNowCard onBuy={() => navigate("/vignettes")} />
       ) : (
-        visible.map((order) => <OrderCard key={order.id} order={order} />)
+        <>
+          {visible.map((order) => (
+            <OrderCard key={order.id} order={order} />
+          ))}
+          {pages.current < pages.total && (
+            <button
+              type="button"
+              onClick={() => void loadMore()}
+              className="w-full rounded-full bg-white/20 py-3 text-[15px] font-extrabold text-white transition active:scale-[0.98]"
+            >
+              Load more ({pages.current}/{pages.total})
+            </button>
+          )}
+        </>
       )}
     </div>
   )

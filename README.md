@@ -53,24 +53,29 @@ pure browser SPA.
 | Area | Endpoints | Where |
 |---|---|---|
 | OTP sign-in | `otp/start`, `otp/verify` | Account tab |
-| Guest sessions | `auth/guest` | automatic on first launch |
+| Apple/Google sign-in | `nonce`, `apple/verify`, `google/verify`, `social/link-email` | Account tab (buttons render when `VITE_VIGNETTE_{GOOGLE,APPLE}_CLIENT_ID` set; 202 `email_required` → OTP-link flow) |
+| Guest sessions | `auth/guest` | automatic on first launch (lazy, self-healing) |
 | Tokens | `token/refresh`, `logout`, `logout-all` | api client / Account |
 | Sessions | `GET auth/sessions` | Account → Devices & sessions |
 | Profile | `GET /public/me` | Account header |
-| Orders | `GET /public/me/orders`, `GET orders/:id` | Home tab (+ status polling) |
-| Buy | `POST /public/me/orders` → `payment_link` | order sheet (2-step) |
+| Orders | `GET /public/me/orders` (page/status/scope), `GET orders/:id` | Home tab (+ pagination, status polling) |
+| Buy | `POST /public/me/orders` (+ `?allow_duplication` retry) → `payment_link` | order sheet (2-step) |
 | Modify / refund / transfer | `POST orders/:id/{modify,refund,transfer}` | expanded order card |
-| Wallet / referrals / vehicles | `GET wallet`, `referrals`, `vehicles` | Account sections |
-| Notifications | `GET notifications` | Account section |
-| Consents | `GET consents` | Account → Partner access |
+| Wallet / referrals / vehicles | `GET wallet`, `referrals`, `vehicles` | Account sections (wallet/income are **integer cents**) |
+| Notifications | `GET notifications` (paginated, implicit mark-read) | Account section |
+| Consents | `GET`/`POST`/`DELETE consents` | Account → Partner access (grant/revoke) |
 | Apple Wallet | `GET apple-pass` | order card → ADD TO WALLET |
 | Catalog | `GET catalog/products`, `catalog/products/flex` | Vignettes tab / order sheet |
 
-Not wired (out of scope for a browser SPA): Apple/Google native sign-in
-(`nonce`, `apple/verify`, `google/verify`, `social/link-email` — see
-`vignette-auth-tester-spa` for a working web implementation) and
-`POST /public/me/consents` grant/revoke (only meaningful for partner-bound
-clients).
+Contract details honored (per `vignette.id/docs/auth/integration-guide.md` +
+controller source): refresh is single-flight and never retried with the same
+token after a lost response (rotation reuse revokes the family); per-period
+restrictions `vin_code_required` (9/17 alnum), `driver_info_required`
+(`user.user_name`/`passport_number`/`passport_country`), `from-tomorrow`
+(TODAY disabled) and `disabled` (period hidden); `CREATED` = awaiting payment
+(distinct card, never "processing"); `end_date` may be the string
+`"YYYY-MM-DD 23:59"`; MD vignette + MD plate blocked client-side;
+`Retry-After` surfaced on 429s.
 
 ## Buy flow details
 

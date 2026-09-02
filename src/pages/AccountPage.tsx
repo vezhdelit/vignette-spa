@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import {
   BadgeCheck,
   Bell,
@@ -15,8 +15,16 @@ import {
 import { toast } from "sonner"
 import { Spinner } from "@/components/ui/spinner"
 import { PlateBadge } from "@/components/order/PlateBadge"
-import { apiResult, ApiRequestError } from "@/lib/api"
-import { formatDate } from "@/lib/format"
+import { api, apiResult, ApiRequestError } from "@/lib/api"
+import { formatCents, formatDate } from "@/lib/format"
+import {
+  APPLE_CLIENT_ID,
+  GOOGLE_CLIENT_ID,
+  initAppleSignIn,
+  isAppleCancel,
+  renderGoogleButton,
+  signInWithApple,
+} from "@/lib/social"
 import { useAuthStore } from "@/stores/auth"
 import { useOrdersStore } from "@/stores/orders"
 import { cn } from "@/lib/utils"
@@ -30,7 +38,11 @@ import type {
 } from "@/types/api"
 
 function errorMessage(e: unknown): string {
-  if (e instanceof ApiRequestError) return e.message
+  if (e instanceof ApiRequestError) {
+    return e.retryAfter
+      ? `${e.message} — try again in ${e.retryAfter}s`
+      : e.message
+  }
   return e instanceof Error ? e.message : "Something went wrong"
 }
 
@@ -82,16 +94,33 @@ export function AccountPage() {
 
 /* ------------------------------------------------------------- sign in */
 
+type SignInMode =
+  | { kind: "email" }
+  | { kind: "otp"; email: string; challengeId: string }
+  /** apple/google verify answered 202 email_required */
+  | { kind: "link-email"; provider: string; linkToken: string }
+  | {
+      kind: "link-otp"
+      provider: string
+      linkToken: string
+      email: string
+      challengeId: string
+    }
+
 function SignInCard() {
   const startOtp = useAuthStore((s) => s.startOtp)
   const verifyOtp = useAuthStore((s) => s.verifyOtp)
+  const fetchNonce = useAuthStore((s) => s.fetchNonce)
+  const verifySocial = useAuthStore((s) => s.verifySocial)
+  const linkSocialEmail = useAuthStore((s) => s.linkSocialEmail)
   const reloadOrders = useOrdersStore((s) => s.load)
 
+  const [mode, setMode] = useState<SignInMode>({ kind: "email" })
   const [email, setEmail] = useState("")
-  const [challengeId, setChallengeId] = useState<string | null>(null)
   const [code, setCode] = useState("")
   const [busy, setBusy] = useState(false)
   const [resendIn, setResendIn] = useState(0)
+  const googleRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (resendIn <= 0) return
@@ -99,13 +128,109 @@ function SignInCard() {
     return () => clearTimeout(t)
   }, [resendIn])
 
+  const onSignedIn = () => {
+    useOrdersStore.getState().reset()
+    void reloadOrders()
+    toast.success("Signed in")
+  }
+
+  const finishSocial = useCallback(
+    async (provider: "apple" | "google", token: string, nonce: string) => {
+      setBusy(true)
+      try {
+        const result = await verifySocial(provider, token, nonce)
+        if (result.status === "email_required") {
+          // provider disclosed no usable email — collect one via OTP
+          setMode({ kind: "link-email", provider, linkToken: result.linkToken })
+          setEmail("")
+        } else {
+          onSignedIn()
+        }
+      } catch (e) {
+        toast.error(errorMessage(e))
+      } finally {
+        setBusy(false)
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [verifySocial]
+  )
+
+  // Google: the nonce is baked into the rendered button — arm on mount.
+  // Nonces are single-use (5-min TTL), so re-arm after every credential.
+  const armGoogle = useCallback(async () => {
+    if (!GOOGLE_CLIENT_ID || !googleRef.current) return
+    try {
+      const nonce = await fetchNonce()
+      await renderGoogleButton(googleRef.current, {
+        nonce,
+        onCredential: (idToken) => {
+          void finishSocial("google", idToken, nonce).finally(() => {
+            void armGoogle()
+          })
+        },
+      })
+    } catch {
+      /* button simply doesn't render */
+    }
+  }, [fetchNonce, finishSocial])
+
+  // Apple: all async prep happens ahead of the tap (popup-blocker rule) and
+  // re-arms after every attempt — the nonce is consumed server-side even on
+  // a failed verify.
+  const appleNonce = useRef<string | null>(null)
+  const armApple = useCallback(async () => {
+    if (!APPLE_CLIENT_ID) return
+    try {
+      const nonce = await fetchNonce()
+      await initAppleSignIn(nonce)
+      appleNonce.current = nonce
+    } catch {
+      appleNonce.current = null
+    }
+  }, [fetchNonce])
+
+  useEffect(() => {
+    void armGoogle()
+    void armApple()
+  }, [armGoogle, armApple])
+
+  const onAppleClick = () => {
+    // NO await before signInWithApple() — see lib/social.ts
+    const nonce = appleNonce.current
+    signInWithApple()
+      .then((identityToken) => {
+        if (!identityToken || !nonce) {
+          toast.error("Apple sign-in didn't return a token")
+          return
+        }
+        return finishSocial("apple", identityToken, nonce)
+      })
+      .catch((e) => {
+        if (!isAppleCancel(e)) toast.error(errorMessage(e))
+      })
+      .finally(() => {
+        void armApple()
+      })
+  }
+
   const start = async () => {
     setBusy(true)
     try {
       const result = await startOtp(email.trim())
-      setChallengeId(result.challenge_id)
       setResendIn(result.resend_after)
       setCode("")
+      if (mode.kind === "link-email" || mode.kind === "link-otp") {
+        setMode({
+          kind: "link-otp",
+          provider: mode.provider,
+          linkToken: mode.linkToken,
+          email: email.trim(),
+          challengeId: result.challenge_id,
+        })
+      } else {
+        setMode({ kind: "otp", email: email.trim(), challengeId: result.challenge_id })
+      }
       toast.success("Code sent — check your inbox")
     } catch (e) {
       toast.error(errorMessage(e))
@@ -115,13 +240,20 @@ function SignInCard() {
   }
 
   const verify = async (value: string) => {
-    if (!challengeId) return
     setBusy(true)
     try {
-      await verifyOtp(challengeId, value)
-      useOrdersStore.getState().reset()
-      void reloadOrders()
-      toast.success("Signed in")
+      if (mode.kind === "otp") {
+        await verifyOtp(mode.challengeId, value)
+      } else if (mode.kind === "link-otp") {
+        await linkSocialEmail({
+          linkToken: mode.linkToken,
+          challengeId: mode.challengeId,
+          code: value,
+        })
+      } else {
+        return
+      }
+      onSignedIn()
     } catch (e) {
       toast.error(errorMessage(e))
       setCode("")
@@ -130,35 +262,53 @@ function SignInCard() {
     }
   }
 
+  const emailValid = /.+@.+\..+/.test(email)
+  const showEmailForm = mode.kind === "email" || mode.kind === "link-email"
+  const showOtpForm = mode.kind === "otp" || mode.kind === "link-otp"
+
   return (
     <div className="rounded-[24px] bg-white p-5">
       <h2 className="text-lg font-extrabold text-navy">Sign in</h2>
-      {!challengeId ? (
+
+      {mode.kind === "link-email" && (
+        <p className="mt-2 rounded-xl bg-brand-soft/50 px-3 py-2 text-sm font-semibold text-navy">
+          Your {mode.provider === "apple" ? "Apple ID" : "Google account"} didn't
+          share a usable email. Enter your real email — we'll verify it with a
+          code and link it to your {mode.provider} sign-in.
+        </p>
+      )}
+
+      {showEmailForm && (
         <>
-          <p className="mt-1 text-sm font-semibold text-navy-soft">
-            We'll email you a 6-digit code. No password needed.
-          </p>
+          {mode.kind === "email" && (
+            <p className="mt-1 text-sm font-semibold text-navy-soft">
+              We'll email you a 6-digit code. No password needed.
+            </p>
+          )}
           <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && /.+@.+\..+/.test(email) && start()}
+            onKeyDown={(e) => e.key === "Enter" && emailValid && start()}
             placeholder="Email"
             className="mt-4 w-full rounded-2xl bg-[#f1f4f8] px-4 py-3.5 text-center text-lg font-semibold text-navy outline-none placeholder:text-navy-soft"
           />
           <button
             type="button"
-            disabled={busy || !/.+@.+\..+/.test(email)}
+            disabled={busy || !emailValid}
             onClick={start}
             className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-pink py-3.5 text-lg font-extrabold tracking-wider text-white uppercase transition active:scale-[0.98] disabled:opacity-50"
           >
             {busy && <Spinner className="text-white" />} Send code
           </button>
         </>
-      ) : (
+      )}
+
+      {showOtpForm && (
         <>
           <p className="mt-1 text-sm font-semibold text-navy-soft">
-            Enter the code we sent to <span className="text-navy">{email}</span>
+            Enter the code we sent to{" "}
+            <span className="text-navy">{mode.email}</span>
           </p>
           <input
             inputMode="numeric"
@@ -176,7 +326,17 @@ function SignInCard() {
           <div className="mt-3 flex items-center justify-between">
             <button
               type="button"
-              onClick={() => setChallengeId(null)}
+              onClick={() =>
+                setMode(
+                  mode.kind === "link-otp"
+                    ? {
+                        kind: "link-email",
+                        provider: mode.provider,
+                        linkToken: mode.linkToken,
+                      }
+                    : { kind: "email" }
+                )
+              }
               className="text-sm font-bold text-navy-soft"
             >
               Change email
@@ -196,6 +356,29 @@ function SignInCard() {
             </p>
           )}
         </>
+      )}
+
+      {/* social sign-in — only when the env configures the provider */}
+      {mode.kind === "email" && (GOOGLE_CLIENT_ID || APPLE_CLIENT_ID) && (
+        <div className="mt-4 border-t border-[#eef2f6] pt-4">
+          <p className="mb-3 text-center text-xs font-bold tracking-wider text-navy-soft uppercase">
+            or continue with
+          </p>
+          <div className="space-y-2.5">
+            {GOOGLE_CLIENT_ID && (
+              <div ref={googleRef} className="flex justify-center" />
+            )}
+            {APPLE_CLIENT_ID && (
+              <button
+                type="button"
+                onClick={onAppleClick}
+                className="mx-auto flex w-full max-w-[400px] items-center justify-center gap-2 rounded-full bg-black py-2.5 text-[15px] font-bold text-white transition active:scale-[0.98]"
+              >
+                 Continue with Apple
+              </button>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )
@@ -276,7 +459,7 @@ function useLazy<T>(fetcher: () => Promise<T>) {
     }
   }
 
-  return { data, error, loading, load }
+  return { data, error, loading, load, setData }
 }
 
 function SectionBody({
@@ -309,15 +492,18 @@ function WalletSection() {
         {data && (
           <div className="flex gap-3">
             <div className="flex-1 rounded-2xl bg-[#f1f4f8] p-3.5 text-center">
+              {/* balance/bonuses arrive as integer cents */}
               <p className="text-2xl font-extrabold text-navy">
-                {data.balance} {data.currency === "EUR" ? "€" : data.currency}
+                {formatCents(data.balance, data.currency)}
               </p>
               <p className="text-xs font-bold tracking-wider text-navy-soft uppercase">
                 Balance
               </p>
             </div>
             <div className="flex-1 rounded-2xl bg-[#f1f4f8] p-3.5 text-center">
-              <p className="text-2xl font-extrabold text-navy">{data.bonuses}</p>
+              <p className="text-2xl font-extrabold text-navy">
+                {formatCents(data.bonuses, data.currency)}
+              </p>
               <p className="text-xs font-bold tracking-wider text-navy-soft uppercase">
                 Bonuses
               </p>
@@ -351,9 +537,10 @@ function ReferralsSection() {
             </button>
             <div className="mt-3 flex gap-3 text-center">
               {[
-                { label: "Invited", value: data.invited },
-                { label: "Sales", value: data.sales },
-                { label: "Income", value: `${data.income} €` },
+                { label: "Invited", value: String(data.invited) },
+                { label: "Sales", value: String(data.sales) },
+                // income is integer cents
+                { label: "Income", value: formatCents(data.income) },
               ].map(({ label, value }) => (
                 <div key={label} className="flex-1 rounded-2xl bg-[#f1f4f8] p-3">
                   <p className="text-lg font-extrabold text-navy">{value}</p>
@@ -402,20 +589,41 @@ function VehiclesSection() {
 }
 
 function NotificationsSection() {
-  const { data, error, loading, load } = useLazy(() =>
-    apiResult<AppNotification[]>("/public/me/notifications")
-  )
+  const [items, setItems] = useState<AppNotification[] | null>(null)
+  const [pages, setPages] = useState({ total: 1, current: 1 })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const loadPage = async (page: number) => {
+    setLoading(true)
+    setError(null)
+    try {
+      // fetching marks the page read server-side (mark_read defaults on)
+      const envelope = await api<AppNotification[]>("/public/me/notifications", {
+        query: { page },
+      })
+      setItems((prev) =>
+        page > 1 && prev ? [...prev, ...envelope.result] : envelope.result
+      )
+      setPages(envelope.pages ?? { total: 1, current: page })
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
-    <Section icon={Bell} title="Notifications" onFirstOpen={load}>
-      <SectionBody loading={loading} error={error}>
-        {data &&
-          (data.length === 0 ? (
+    <Section icon={Bell} title="Notifications" onFirstOpen={() => void loadPage(1)}>
+      <SectionBody loading={loading && !items} error={error}>
+        {items &&
+          (items.length === 0 ? (
             <p className="py-1 text-sm font-semibold text-navy-soft">
               Nothing here yet.
             </p>
           ) : (
             <div className="space-y-2.5">
-              {data.map((n) => (
+              {items.map((n) => (
                 <div
                   key={String(n.id)}
                   className={cn(
@@ -430,6 +638,16 @@ function NotificationsSection() {
                   </p>
                 </div>
               ))}
+              {pages.current < pages.total && (
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => void loadPage(pages.current + 1)}
+                  className="w-full rounded-full bg-[#f1f4f8] py-2 text-sm font-bold text-navy disabled:opacity-50"
+                >
+                  {loading ? "Loading…" : `Load more (${pages.current}/${pages.total})`}
+                </button>
+              )}
             </div>
           ))}
       </SectionBody>
@@ -456,10 +674,8 @@ function SessionsSection() {
                   )}
                 </p>
                 <p className="mt-0.5 text-xs font-semibold text-navy-soft">
-                  {s.ip ?? "—"} · created {formatDate(Math.floor(s.created_at))}
-                  {s.last_used_at
-                    ? ` · last used ${formatDate(Math.floor(s.last_used_at))}`
-                    : ""}
+                  {s.ip ?? "—"} · created {formatDate(s.created_at)}
+                  {s.last_used_at ? ` · last used ${formatDate(s.last_used_at)}` : ""}
                 </p>
               </div>
             ))}
@@ -470,31 +686,89 @@ function SessionsSection() {
   )
 }
 
+/**
+ * Partner-order visibility consent (GET/POST/DELETE /public/me/consents).
+ * Grant/revoke applies to the CALLING client's partner; on a first-party
+ * client granting is harmless but changes nothing (it already sees all).
+ */
 function ConsentsSection() {
-  const { data, error, loading, load } = useLazy(() =>
+  const { data, error, loading, load, setData } = useLazy(() =>
     apiResult<Consent[]>("/public/me/consents")
   )
+  const [busy, setBusy] = useState<"grant" | "revoke" | null>(null)
+
+  const grant = async () => {
+    setBusy("grant")
+    try {
+      await apiResult<Consent>("/public/me/consents", { method: "POST" })
+      toast.success("Full account access granted to this app's partner")
+      setData(await apiResult<Consent[]>("/public/me/consents"))
+    } catch (e) {
+      toast.error(errorMessage(e))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const revoke = async () => {
+    setBusy("revoke")
+    try {
+      await api("/public/me/consents", { method: "DELETE" })
+      toast.success("Access revoked")
+      setData(await apiResult<Consent[]>("/public/me/consents"))
+    } catch (e) {
+      toast.error(errorMessage(e))
+    } finally {
+      setBusy(null)
+    }
+  }
+
   return (
     <Section icon={ShieldCheck} title="Partner access" onFirstOpen={load}>
       <SectionBody loading={loading} error={error}>
-        {data &&
-          (data.length === 0 ? (
-            <p className="py-1 text-sm font-semibold text-navy-soft">
-              No partner apps have access to your orders.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {data.map((c) => (
-                <div
-                  key={String(c.partner_id)}
-                  className="rounded-2xl bg-[#f6f8fa] p-3 text-sm font-semibold text-navy"
-                >
-                  Partner #{String(c.partner_id)} · {c.scope} · granted{" "}
-                  {formatDate(c.granted_at)}
-                </div>
-              ))}
+        {data && (
+          <>
+            {data.length === 0 ? (
+              <p className="py-1 text-sm font-semibold text-navy-soft">
+                No partner apps have access to your full order history.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {data.map((c) => (
+                  <div
+                    key={String(c.partner_id)}
+                    className="rounded-2xl bg-[#f6f8fa] p-3 text-sm font-semibold text-navy"
+                  >
+                    Partner #{String(c.partner_id)} · {c.scope} · granted{" "}
+                    {formatDate(c.granted_at)}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="mt-3 flex gap-2.5">
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={grant}
+                className="flex flex-1 items-center justify-center gap-2 rounded-full bg-brand py-2.5 text-sm font-extrabold text-white disabled:opacity-50"
+              >
+                {busy === "grant" && <Spinner className="text-white" />} Grant
+              </button>
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={revoke}
+                className="flex flex-1 items-center justify-center gap-2 rounded-full border-2 border-pink py-2.5 text-sm font-extrabold text-pink disabled:opacity-50"
+              >
+                {busy === "revoke" && <Spinner />} Revoke
+              </button>
             </div>
-          ))}
+            <p className="mt-2 text-xs font-medium text-navy-soft">
+              Granting lets this app's partner read your whole order history
+              (orders?scope=all). Revocation is immediate.
+            </p>
+          </>
+        )}
       </SectionBody>
     </Section>
   )

@@ -63,11 +63,13 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   const [flexEnabled, setFlexEnabled] = useState(true)
   const [flexType, setFlexType] = useState<"default" | "expanded">("default")
   const [terms, setTerms] = useState(true)
+  // field names per services/partner-order.js#validatePartnerDriverInfo
   const [driver, setDriver] = useState({
-    full_name: "",
+    user_name: "",
     passport_number: "",
-    phone_number: "",
+    passport_country: "ua",
   })
+  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null)
   const [paymentLink, setPaymentLink] = useState<string | null>(null)
   const [createdOrder, setCreatedOrder] = useState<Order | null>(null)
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -96,11 +98,21 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
       setStartDate(dayStart(0))
       setPaymentLink(null)
       setCreatedOrder(null)
+      setDuplicateWarning(null)
       setFlexEnabled(true)
-      setFlexType("default")
+      setFlexType(useCatalogStore.getState().defaultFlexType())
       setTerms(true)
     }
   }, [open, product, periods])
+
+  // a "from-tomorrow" period can't start today — bump the date forward
+  useEffect(() => {
+    const restrictions =
+      product && period ? product.price[period]?.restrictions : undefined
+    if (restrictions?.includes("from-tomorrow") && startDate < dayStart(1)) {
+      setStartDate(dayStart(1))
+    }
+  }, [product, period, startDate])
 
   useEffect(() => {
     if (me?.email) setEmail(me.email)
@@ -131,6 +143,9 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
     selectedPrice?.restrictions?.includes("vin_code_required") ?? false
   const driverInfoRequired =
     selectedPrice?.restrictions?.includes("driver_info_required") ?? false
+  // period only sellable starting tomorrow (services/product.js#checkProducts)
+  const fromTomorrowOnly =
+    selectedPrice?.restrictions?.includes("from-tomorrow") ?? false
   const flexOption =
     flexOptions.find((f) => f.type === flexType) ??
     flexOptions.find((f) => f.is_default)
@@ -147,58 +162,80 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   const isGuest = me?.guest ?? true
   const emailValid = /.+@.+\..+/.test(email)
 
+  // plates must be ≥3 chars with a country (helpers/vehicle.js#checkCars);
+  // per-country patterns stay server-side and surface via the API error
   const canProceed =
-    plate.trim().length >= 2 &&
+    plate.trim().length >= 3 &&
     period !== null &&
     emailValid &&
     (!vinRequired || /^[a-z0-9]{9}$|^[a-z0-9]{17}$/i.test(vin.trim())) &&
     (!driverInfoRequired ||
-      (driver.full_name.trim() && driver.passport_number.trim() && driver.phone_number.trim()))
+      Boolean(
+        driver.user_name.trim() &&
+          driver.passport_number.trim() &&
+          driver.passport_country
+      ))
 
-  const submit = async () => {
+  // "Moldovan vignette is not required for a Moldovan vehicle plate"
+  const mdOnMd = product.country === "md" && plateCountry === "md"
+
+  const submit = async (options: { allowDuplication?: boolean } = {}) => {
     if (!terms) {
       toast.error("Please accept the terms and conditions")
       return
     }
+    setDuplicateWarning(null)
     setStep("creating")
     try {
-      const result = await createOrder({
-        terms_and_privacy_accepted: true,
-        cars: [
-          {
-            plate: plate.trim().toUpperCase().replace(/\s+/g, ""),
-            country: plateCountry,
-            ...(vin.trim() ? { vin_code: vin.trim().toUpperCase() } : {}),
-          },
-        ],
-        products: [
-          {
-            name: product.name,
-            period: period!,
-            start_date: isToday ? Math.floor(Date.now() / 1000) : startDate,
-            flex: { type: flexType, enabled: flexEnabled },
-          },
-        ],
-        ...(isGuest ? { email: email.trim() } : {}),
-        ...(driverInfoRequired
-          ? {
-              user: {
-                full_name: driver.full_name.trim(),
-                passport_number: driver.passport_number.trim(),
-                phone_number: driver.phone_number.trim(),
-                ...(isGuest ? { email: email.trim() } : {}),
-              },
-            }
-          : {}),
-      })
+      const result = await createOrder(
+        {
+          terms_and_privacy_accepted: true,
+          cars: [
+            {
+              plate: plate.trim().toUpperCase().replace(/\s+/g, ""),
+              country: plateCountry,
+              ...(vin.trim() ? { vin_code: vin.trim().toUpperCase() } : {}),
+            },
+          ],
+          products: [
+            {
+              name: product.name,
+              period: period!,
+              start_date: isToday ? Math.floor(Date.now() / 1000) : startDate,
+              flex: { type: flexType, enabled: flexEnabled },
+            },
+          ],
+          ...(isGuest ? { email: email.trim() } : {}),
+          ...(driverInfoRequired
+            ? {
+                user: {
+                  user_name: driver.user_name.trim(),
+                  passport_number: driver.passport_number.trim(),
+                  passport_country: driver.passport_country,
+                  ...(isGuest ? { email: email.trim() } : {}),
+                },
+              }
+            : {}),
+        },
+        options
+      )
       setCreatedOrder(result.orders[0] ?? null)
       setPaymentLink(result.payment_link)
       window.open(result.payment_link, "_blank", "noopener")
       setStep("paying")
     } catch (e) {
-      const message =
-        e instanceof ApiRequestError ? e.message : "Could not create the order"
-      toast.error(message)
+      if (
+        e instanceof ApiRequestError &&
+        ["pending_orders", "active_orders", "approved_orders"].includes(e.type) &&
+        !options.allowDuplication
+      ) {
+        // the plate already has an overlapping order — let the user decide
+        setDuplicateWarning(e.message)
+      } else {
+        const message =
+          e instanceof ApiRequestError ? e.message : "Could not create the order"
+        toast.error(message)
+      }
       setStep("confirm")
     }
   }
@@ -348,7 +385,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                     <input
                       type="date"
                       aria-label="Start date"
-                      min={toDateInput(dayStart(0))}
+                      min={toDateInput(dayStart(fromTomorrowOnly ? 1 : 0))}
                       value={toDateInput(startDate)}
                       onChange={(e) => {
                         if (!e.target.value) return
@@ -363,9 +400,10 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                   <div className="mt-3 flex gap-3">
                     <button
                       type="button"
+                      disabled={fromTomorrowOnly}
                       onClick={() => setStartDate(dayStart(0))}
                       className={cn(
-                        "flex-1 rounded-full py-3 text-[15px] font-extrabold tracking-wider uppercase transition",
+                        "flex-1 rounded-full py-3 text-[15px] font-extrabold tracking-wider uppercase transition disabled:opacity-40",
                         isToday
                           ? "bg-[#3a3f47] text-white"
                           : "border-2 border-[#3a3f47] text-navy"
@@ -395,9 +433,9 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                       Driver details
                     </p>
                     <input
-                      value={driver.full_name}
+                      value={driver.user_name}
                       onChange={(e) =>
-                        setDriver((d) => ({ ...d, full_name: e.target.value }))
+                        setDriver((d) => ({ ...d, user_name: e.target.value }))
                       }
                       placeholder="Full name"
                       className="w-full rounded-xl bg-[#f1f4f8] px-3.5 py-3 text-[15px] font-semibold text-navy outline-none placeholder:text-navy-soft"
@@ -410,15 +448,27 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                       placeholder="Passport number"
                       className="w-full rounded-xl bg-[#f1f4f8] px-3.5 py-3 text-[15px] font-semibold text-navy outline-none placeholder:text-navy-soft"
                     />
-                    <input
-                      value={driver.phone_number}
-                      onChange={(e) =>
-                        setDriver((d) => ({ ...d, phone_number: e.target.value }))
-                      }
-                      placeholder="Phone number"
-                      inputMode="tel"
-                      className="w-full rounded-xl bg-[#f1f4f8] px-3.5 py-3 text-[15px] font-semibold text-navy outline-none placeholder:text-navy-soft"
-                    />
+                    <label className="flex items-center gap-2.5 rounded-xl bg-[#f1f4f8] px-3.5 py-3">
+                      <span className="text-[15px] font-semibold text-navy-soft">
+                        Passport country
+                      </span>
+                      <select
+                        value={driver.passport_country}
+                        onChange={(e) =>
+                          setDriver((d) => ({
+                            ...d,
+                            passport_country: e.target.value,
+                          }))
+                        }
+                        className="flex-1 bg-transparent text-right text-[15px] font-semibold text-navy outline-none"
+                      >
+                        {Object.entries(COUNTRY_NAMES).map(([code, name]) => (
+                          <option key={code} value={code}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                   </div>
                 )}
 
@@ -458,9 +508,21 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                   />
                 </div>
 
+                {fromTomorrowOnly && (
+                  <p className="mt-3 px-1 text-center text-sm font-semibold text-white/90">
+                    This vignette can only start from tomorrow.
+                  </p>
+                )}
+                {mdOnMd && (
+                  <p className="mt-3 rounded-2xl bg-pink/90 px-4 py-3 text-sm font-bold text-white">
+                    A Moldovan vignette is not required for a Moldovan vehicle
+                    plate — pick a different plate country.
+                  </p>
+                )}
+
                 <button
                   type="button"
-                  disabled={!canProceed}
+                  disabled={!canProceed || mdOnMd}
                   onClick={() => setStep("confirm")}
                   className="mt-4 w-full rounded-2xl bg-mint py-4 text-xl font-extrabold tracking-[0.25em] text-white uppercase shadow-[0_10px_24px_rgba(47,199,141,0.4)] transition active:scale-[0.98] disabled:opacity-50"
                 >
@@ -609,6 +671,25 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                   </p>
                 </div>
 
+                {duplicateWarning && (
+                  <div className="mt-4 rounded-[24px] bg-white p-4">
+                    <p className="text-[15px] font-bold text-navy">
+                      {duplicateWarning}
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-navy-soft">
+                      You can still place this order if you're sure it's not a
+                      duplicate.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => submit({ allowDuplication: true })}
+                      className="mt-3 w-full rounded-full border-2 border-pink py-2.5 text-[15px] font-extrabold tracking-wider text-pink uppercase"
+                    >
+                      Buy anyway
+                    </button>
+                  </div>
+                )}
+
                 <div className="mt-5 flex items-end justify-between px-1">
                   <span className="text-lg font-semibold text-white">
                     Total · 1 vignette
@@ -619,7 +700,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                 <button
                   type="button"
                   disabled={!terms}
-                  onClick={submit}
+                  onClick={() => submit()}
                   className="mt-3 w-full rounded-2xl bg-mint py-4 text-xl font-extrabold tracking-[0.25em] text-white uppercase shadow-[0_10px_24px_rgba(47,199,141,0.4)] transition active:scale-[0.98] disabled:opacity-60"
                 >
                   Pay

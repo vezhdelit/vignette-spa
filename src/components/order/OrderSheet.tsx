@@ -139,11 +139,22 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
     }
   }, [step, createdOrder, getOrder])
 
-  if (!product) return null
-
-  const selectedPrice = period ? product.price[period] : null
+  const selectedPrice = product && period ? product.price[period] : null
   const vinRequired =
     selectedPrice?.restrictions?.includes("vin_code_required") ?? false
+
+  // The field is hidden entirely when the selected period doesn't need a
+  // VIN — clear any leftover value from a previously-selected period so it
+  // can't silently ride along in the submit body.
+  useEffect(() => {
+    if (!vinRequired) {
+      setVin("")
+      setVinOpen(false)
+    }
+  }, [vinRequired])
+
+  if (!product) return null
+
   const driverInfoRequired =
     selectedPrice?.restrictions?.includes("driver_info_required") ?? false
   // period only sellable starting tomorrow (services/product.js#checkProducts)
@@ -329,27 +340,25 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                           className="min-w-0 flex-1 bg-transparent px-2 text-center text-xl font-extrabold tracking-[0.15em] text-navy uppercase outline-none placeholder:text-[11px] placeholder:font-semibold placeholder:tracking-[0.12em] placeholder:text-navy-soft"
                         />
                       </div>
-                      {vinOpen ? (
-                        <input
-                          autoFocus
-                          value={vin}
-                          onChange={(e) => setVin(e.target.value.toUpperCase())}
-                          onBlur={() => !vin && setVinOpen(false)}
-                          placeholder="VIN CODE"
-                          className="w-full rounded-b-xl bg-brand px-3 py-2 text-center text-sm font-bold tracking-[0.15em] text-white uppercase outline-none placeholder:text-white/70"
-                        />
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setVinOpen(true)}
-                          className="w-full rounded-b-xl bg-brand px-3 py-2 text-center text-sm font-semibold text-white"
-                        >
-                          {vin ||
-                            (vinRequired
-                              ? "Type vin-code (required)"
-                              : "Click to type vin-code")}
-                        </button>
-                      )}
+                      {vinRequired &&
+                        (vinOpen ? (
+                          <input
+                            autoFocus
+                            value={vin}
+                            onChange={(e) => setVin(e.target.value.toUpperCase())}
+                            onBlur={() => !vin && setVinOpen(false)}
+                            placeholder="VIN CODE"
+                            className="w-full rounded-b-xl bg-brand px-3 py-2 text-center text-sm font-bold tracking-[0.15em] text-white uppercase outline-none placeholder:text-white/70"
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setVinOpen(true)}
+                            className="w-full rounded-b-xl bg-brand px-3 py-2 text-center text-sm font-semibold text-white"
+                          >
+                            {vin || "Type vin-code (required)"}
+                          </button>
+                        ))}
                     </div>
                   </div>
                 </div>

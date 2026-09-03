@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   Car,
   TriangleAlert,
@@ -28,8 +28,10 @@ import { FlagRect } from "@/lib/countries"
 import { COUNTRY_NAMES, PLATE_COUNTRIES, Flag } from "@/lib/countries"
 import { formatDotDateTime, formatEndDate, periodLabel } from "@/lib/format"
 import { apiBlob, ApiRequestError } from "@/lib/api"
+import { isValidVin } from "@/lib/vehicle"
 import { useOrdersStore } from "@/stores/orders"
 import { useAuthStore } from "@/stores/auth"
+import { useCatalogStore } from "@/stores/catalog"
 import { cn } from "@/lib/utils"
 import type { Order } from "@/types/api"
 
@@ -376,12 +378,26 @@ function ModifyDialog({
   onClose: () => void
 }) {
   const modify = useOrdersStore((s) => s.modify)
+  const catalogProducts = useCatalogStore((s) => s.products)
+  const loadCatalog = useCatalogStore((s) => s.load)
   const car = order.cars[0]
   const [plate, setPlate] = useState(car?.plate ?? "")
   const [country, setCountry] = useState(car?.country ?? "ua")
   const [vin, setVin] = useState("")
   const [confirmed, setConfirmed] = useState(false)
   const [busy, setBusy] = useState(false)
+
+  // the order card doesn't otherwise touch the catalog — load it here so the
+  // per-period vin_code_required restriction below has something to read
+  useEffect(() => {
+    void loadCatalog()
+  }, [loadCatalog])
+
+  const periodPrice = catalogProducts.find((p) => p.name === order.product)?.price[
+    String(order.period)
+  ]
+  const vinRequired = periodPrice?.restrictions?.includes("vin_code_required") ?? false
+  const vinOk = !vinRequired || isValidVin(vin)
 
   const ineligible = order.modify?.eligible === false
   const reasonMessage = ineligible
@@ -460,17 +476,25 @@ function ModifyDialog({
               </select>
             </div>
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor={`vin-${order.id}`}>VIN code (optional)</Label>
-            <Input
-              id={`vin-${order.id}`}
-              value={vin}
-              onChange={(e) => setVin(e.target.value)}
-              placeholder="Leave empty to keep current"
-              className="uppercase"
-              disabled={ineligible}
-            />
-          </div>
+          {vinRequired && (
+            <div className="space-y-1.5">
+              <Label htmlFor={`vin-${order.id}`}>VIN code</Label>
+              <Input
+                id={`vin-${order.id}`}
+                value={vin}
+                onChange={(e) => setVin(e.target.value)}
+                placeholder="9 or 17-character VIN"
+                className="uppercase"
+                disabled={ineligible}
+                aria-invalid={!vinOk}
+              />
+              {!vinOk && (
+                <p className="text-xs font-semibold text-pink">
+                  This product requires a VIN code (9 or 17 characters).
+                </p>
+              )}
+            </div>
+          )}
           {!ineligible && (
             <label className="flex items-start gap-2 text-xs font-medium text-navy-soft">
               <Checkbox
@@ -487,7 +511,10 @@ function ModifyDialog({
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={busy || ineligible || !confirmed || !plate.trim()}>
+          <Button
+            onClick={submit}
+            disabled={busy || ineligible || !confirmed || !plate.trim() || !vinOk}
+          >
             {busy && <Spinner />} Save changes
           </Button>
         </DialogFooter>

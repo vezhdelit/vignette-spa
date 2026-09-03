@@ -27,6 +27,7 @@ import {
   periodLabel,
 } from "@/lib/format"
 import { ApiRequestError } from "@/lib/api"
+import { isValidVin } from "@/lib/vehicle"
 import { useAuthStore } from "@/stores/auth"
 import { useCatalogStore } from "@/stores/catalog"
 import { useOrdersStore } from "@/stores/orders"
@@ -169,7 +170,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
     plate.trim().length >= 3 &&
     period !== null &&
     emailValid &&
-    (!vinRequired || /^[a-z0-9]{9}$|^[a-z0-9]{17}$/i.test(vin.trim())) &&
+    (!vinRequired || isValidVin(vin)) &&
     (!driverInfoRequired ||
       Boolean(
         driver.user_name.trim() &&

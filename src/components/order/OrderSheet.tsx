@@ -326,10 +326,10 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                     </label>
 
                     <div className="flex-1 overflow-hidden rounded-xl">
-                      <div className="flex items-stretch overflow-hidden rounded-t-xl bg-[#ECEFF3]">
-                        <span className="flex w-11 shrink-0 flex-col items-center justify-center gap-0.5 bg-[#173A7A] py-2">
-                          <Flag code={plateCountry} className="h-3.5 w-5 rounded-[2px]" />
-                          <span className="text-[9px] leading-none font-bold text-white">
+                      <div className="flex items-stretch bg-[#ECEFF3]">
+                        <span className="flex w-14 shrink-0 flex-col items-center justify-center gap-1 bg-[#173A7A] py-3">
+                          <Flag code={plateCountry} className="h-4 w-6 rounded-[2px]" />
+                          <span className="text-[10px] leading-none font-bold text-white">
                             {plateCountry.toUpperCase()}
                           </span>
                         </span>
@@ -337,7 +337,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                           value={plate}
                           onChange={(e) => setPlate(e.target.value.toUpperCase())}
                           placeholder="REGISTRATION PLATE"
-                          className="min-w-0 flex-1 bg-transparent px-2 text-center text-xl font-extrabold tracking-[0.15em] text-navy uppercase outline-none placeholder:text-[11px] placeholder:font-semibold placeholder:tracking-[0.12em] placeholder:text-navy-soft"
+                          className="min-h-14 min-w-0 flex-1 bg-transparent px-3 text-center text-[26px] font-extrabold tracking-[0.2em] text-navy uppercase outline-none placeholder:text-[13px] placeholder:font-semibold placeholder:tracking-widest placeholder:text-navy-soft"
                         />
                       </div>
                       {vinRequired &&
@@ -348,13 +348,13 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                             onChange={(e) => setVin(e.target.value.toUpperCase())}
                             onBlur={() => !vin && setVinOpen(false)}
                             placeholder="VIN CODE"
-                            className="w-full rounded-b-xl bg-brand px-3 py-2 text-center text-sm font-bold tracking-[0.15em] text-white uppercase outline-none placeholder:text-white/70"
+                            className="w-full bg-brand px-3 py-2 text-center text-sm font-bold tracking-[0.15em] text-white uppercase outline-none placeholder:text-white/70"
                           />
                         ) : (
                           <button
                             type="button"
                             onClick={() => setVinOpen(true)}
-                            className="w-full rounded-b-xl bg-brand px-3 py-2 text-center text-sm font-semibold text-white"
+                            className="w-full bg-brand px-3 py-2 text-center text-sm font-semibold text-white"
                           >
                             {vin || "Type vin-code (required)"}
                           </button>

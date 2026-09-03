@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import {
   Car,
   TriangleAlert,
@@ -27,11 +27,11 @@ import { PlateBadge } from "@/components/order/PlateBadge"
 import { FlagRect } from "@/lib/countries"
 import { COUNTRY_NAMES, PLATE_COUNTRIES, Flag } from "@/lib/countries"
 import { formatDotDateTime, formatEndDate, periodLabel } from "@/lib/format"
-import { apiBlob, ApiRequestError } from "@/lib/api"
+import { apiBlob, apiErrorMessage } from "@/lib/api"
 import { isValidVin } from "@/lib/vehicle"
-import { useOrdersStore } from "@/stores/orders"
 import { useAuthStore } from "@/stores/auth"
-import { useCatalogStore } from "@/stores/catalog"
+import { EMPTY_CATALOG, useCatalog } from "@/queries/catalog"
+import { useModifyOrder, useRefundOrder, useTransferOrder } from "@/queries/orders"
 import { cn } from "@/lib/utils"
 import type { Order } from "@/types/api"
 
@@ -92,11 +92,6 @@ function statusTheme(order: Order): StatusTheme {
   }
 }
 
-function errorMessage(e: unknown): string {
-  if (e instanceof ApiRequestError) return e.message
-  return e instanceof Error ? e.message : "Something went wrong"
-}
-
 // Mirrors api/controllers/public-me.js#MODIFY_ERROR_MESSAGES — the `modify`
 // block only carries a reason_code on read, so the copy has to live here too.
 const MODIFY_REASON_MESSAGES: Record<string, string> = {
@@ -145,7 +140,7 @@ export function OrderCard({
       a.click()
       URL.revokeObjectURL(url)
     } catch (e) {
-      toast.error(errorMessage(e))
+      toast.error(apiErrorMessage(e))
     }
   }
 
@@ -377,21 +372,15 @@ function ModifyDialog({
   open: boolean
   onClose: () => void
 }) {
-  const modify = useOrdersStore((s) => s.modify)
-  const catalogProducts = useCatalogStore((s) => s.products)
-  const loadCatalog = useCatalogStore((s) => s.load)
+  const modify = useModifyOrder()
+  // the order card doesn't otherwise touch the catalog — it's needed here for
+  // the per-period vin_code_required restriction
+  const catalogProducts = (useCatalog().data ?? EMPTY_CATALOG).products
   const car = order.cars[0]
   const [plate, setPlate] = useState(car?.plate ?? "")
   const [country, setCountry] = useState(car?.country ?? "ua")
   const [vin, setVin] = useState("")
   const [confirmed, setConfirmed] = useState(false)
-  const [busy, setBusy] = useState(false)
-
-  // the order card doesn't otherwise touch the catalog — load it here so the
-  // per-period vin_code_required restriction below has something to read
-  useEffect(() => {
-    void loadCatalog()
-  }, [loadCatalog])
 
   const periodPrice = catalogProducts.find((p) => p.name === order.product)?.price[
     String(order.period)
@@ -406,21 +395,21 @@ function ModifyDialog({
     : null
 
   const submit = async () => {
-    setBusy(true)
     try {
-      await modify(order.id, {
-        vehicle: {
-          plate: plate.trim().toUpperCase(),
-          country,
-          ...(vin.trim() ? { vin_code: vin.trim().toUpperCase() } : {}),
+      await modify.mutateAsync({
+        id: order.id,
+        body: {
+          vehicle: {
+            plate: plate.trim().toUpperCase(),
+            country,
+            ...(vin.trim() ? { vin_code: vin.trim().toUpperCase() } : {}),
+          },
         },
       })
       toast.success("Order successfully modified")
       onClose()
     } catch (e) {
-      toast.error(errorMessage(e))
-    } finally {
-      setBusy(false)
+      toast.error(apiErrorMessage(e))
     }
   }
 
@@ -513,9 +502,9 @@ function ModifyDialog({
           </Button>
           <Button
             onClick={submit}
-            disabled={busy || ineligible || !confirmed || !plate.trim() || !vinOk}
+            disabled={modify.isPending || ineligible || !confirmed || !plate.trim() || !vinOk}
           >
-            {busy && <Spinner />} Save changes
+            {modify.isPending && <Spinner />} Save changes
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -532,21 +521,17 @@ function TransferDialog({
   open: boolean
   onClose: () => void
 }) {
-  const transfer = useOrdersStore((s) => s.transfer)
+  const transfer = useTransferOrder()
   const [email, setEmail] = useState("")
   const [confirmed, setConfirmed] = useState(false)
-  const [busy, setBusy] = useState(false)
 
   const submit = async () => {
-    setBusy(true)
     try {
-      await transfer(order.id, email.trim())
+      await transfer.mutateAsync({ id: order.id, targetEmail: email.trim() })
       toast.success("Order successfully transferred")
       onClose()
     } catch (e) {
-      toast.error(errorMessage(e))
-    } finally {
-      setBusy(false)
+      toast.error(apiErrorMessage(e))
     }
   }
 
@@ -593,8 +578,11 @@ function TransferDialog({
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={busy || !confirmed || !email.includes("@")}>
-            {busy && <Spinner />} Transfer
+          <Button
+            onClick={submit}
+            disabled={transfer.isPending || !confirmed || !email.includes("@")}
+          >
+            {transfer.isPending && <Spinner />} Transfer
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -615,19 +603,15 @@ function RefundDialog({
   amount?: number
   percent?: number
 }) {
-  const refund = useOrdersStore((s) => s.refund)
-  const [busy, setBusy] = useState(false)
+  const refund = useRefundOrder()
 
   const submit = async () => {
-    setBusy(true)
     try {
-      const result = await refund(order.id)
+      const result = await refund.mutateAsync(order.id)
       toast.success(`Refunded ${result.amount_eur} € (${result.percent}%)`)
       onClose()
     } catch (e) {
-      toast.error(errorMessage(e))
-    } finally {
-      setBusy(false)
+      toast.error(apiErrorMessage(e))
     }
   }
 
@@ -647,8 +631,8 @@ function RefundDialog({
           <Button variant="outline" onClick={onClose}>
             Keep vignette
           </Button>
-          <Button variant="destructive" onClick={submit} disabled={busy}>
-            {busy && <Spinner />} Refund
+          <Button variant="destructive" onClick={submit} disabled={refund.isPending}>
+            {refund.isPending && <Spinner />} Refund
           </Button>
         </DialogFooter>
       </DialogContent>

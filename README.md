@@ -5,8 +5,9 @@ Vignettes / Support / Account tabs, buy flow, order management) on top of the
 **public API** of the `vignette.id` backend — all `/public/auth/*` and
 `/public/me/*` routes, plus the `/public/catalog/*` product catalog.
 
-**Stack:** Vite + React 19 + TypeScript · Zustand (state) · Tailwind CSS v4 ·
-shadcn/ui (radix preset) · react-router v7 · sonner (toasts) · lucide icons.
+**Stack:** Vite + React 19 + TypeScript · TanStack Query (server state) ·
+Zustand (auth session only) · Tailwind CSS v4 · shadcn/ui (radix preset) ·
+react-router v7 · sonner (toasts) · lucide icons.
 
 ## Run
 
@@ -47,6 +48,27 @@ pure browser SPA.
   [src/lib/api.ts](src/lib/api.ts).
 - Tokens persist in `localStorage` (`vignette-auth` key) through Zustand's
   `persist` middleware.
+
+## Data layer
+
+Every request except the auth handshake goes through TanStack Query —
+`src/lib/query.ts` holds the one `QueryClient`, `src/queries/*` the hooks:
+
+- `orders.ts` — `useOrders()` (infinite/load-more; polls every 20s while an
+  order is CREATED/PENDING via `refetchInterval`), `useOrder()`,
+  `usePaymentStatus()` (4s poll until an order leaves CREATED), and the
+  create/modify/refund/transfer mutations, which patch the cached lists.
+- `catalog.ts` — products + flex tiers in one query (5-min stale), with pure
+  helpers `productsFor()` / `defaultFlexType()`.
+- `me.ts`, `account.ts`, `push.ts` — profile, the Account tab sections
+  (each section's body mounts its query only while expanded), consents and
+  web-push registration.
+
+Session-bound keys are `[root, <user id | "anon">, …]`, so signing in or out
+starts from an empty cache; `App.tsx` drops the previous session's entries.
+The only server-derived state outside Query is the session itself
+(`stores/auth.ts`: tokens + the user they were issued to), because the api
+client reads it synchronously to sign requests.
 
 ## Public API coverage
 

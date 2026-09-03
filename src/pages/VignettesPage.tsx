@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { useSearchParams } from "react-router-dom"
-import { useAuthStore } from "@/stores/auth"
-import { useCatalogStore } from "@/stores/catalog"
+import { apiErrorMessage } from "@/lib/api"
+import { EMPTY_CATALOG, productsFor, useCatalog } from "@/queries/catalog"
 import { CountryCarousel } from "@/components/vignettes/CountryCarousel"
 import {
   ProductCard,
@@ -11,15 +11,13 @@ import { OrderSheet } from "@/components/order/OrderSheet"
 import type { CatalogProduct } from "@/types/api"
 
 export function VignettesPage() {
-  const authStatus = useAuthStore((s) => s.status)
-  const { countries, loaded, error, load, productsFor } = useCatalogStore()
+  const catalogQuery = useCatalog()
+  const catalog = catalogQuery.data ?? EMPTY_CATALOG
+  const loaded = catalogQuery.isSuccess
+  const { countries } = catalog
   const [country, setCountry] = useState("ro")
   const [selectedProduct, setSelectedProduct] = useState<CatalogProduct | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
-
-  useEffect(() => {
-    if (authStatus === "ready") void load()
-  }, [authStatus, load])
 
   useEffect(() => {
     if (loaded && !countries.includes(country) && countries.length > 0) {
@@ -37,9 +35,7 @@ export function VignettesPage() {
       setCountry(wantedCountry.toLowerCase())
     }
     if (wantedProduct) {
-      const match = useCatalogStore
-        .getState()
-        .products.find((p) => p.name === wantedProduct)
+      const match = catalog.products.find((p) => p.name === wantedProduct)
       if (match) {
         setCountry(match.country)
         setSelectedProduct(match)
@@ -47,9 +43,9 @@ export function VignettesPage() {
       }
     }
     if (wantedCountry || wantedProduct) setSearchParams({}, { replace: true })
-  }, [loaded, searchParams, countries, setSearchParams])
+  }, [loaded, searchParams, countries, catalog.products, setSearchParams])
 
-  const products = productsFor(country)
+  const products = productsFor(catalog, country)
 
   return (
     <div className="-mx-4">
@@ -60,21 +56,20 @@ export function VignettesPage() {
       />
 
       <div className="mt-5 space-y-4 px-4">
-        {!loaded ? (
+        {catalogQuery.isPending ? (
           <>
             <ProductCardSkeleton />
             <ProductCardSkeleton />
           </>
-        ) : error ? (
+        ) : catalogQuery.isError ? (
           <div className="rounded-[28px] bg-white/90 p-6 text-center">
             <p className="font-bold text-navy">Couldn't load the catalog</p>
-            <p className="mt-1 text-sm font-medium text-navy-soft">{error}</p>
+            <p className="mt-1 text-sm font-medium text-navy-soft">
+              {apiErrorMessage(catalogQuery.error, "Failed to load catalog")}
+            </p>
             <button
               type="button"
-              onClick={() => {
-                useCatalogStore.setState({ loaded: false, error: null })
-                void load()
-              }}
+              onClick={() => void catalogQuery.refetch()}
               className="mt-4 rounded-full bg-brand px-6 py-2.5 font-bold text-white"
             >
               Retry

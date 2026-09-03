@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { useQueryClient } from "@tanstack/react-query"
 import {
   Check,
   ChevronDown,
@@ -30,12 +31,25 @@ import { ApiRequestError } from "@/lib/api"
 import { isValidVin } from "@/lib/vehicle"
 import { getInstallationId } from "@/lib/webpush"
 import { useAuthStore } from "@/stores/auth"
-import { useCatalogStore } from "@/stores/catalog"
-import { useOrdersStore } from "@/stores/orders"
+import {
+  catalogKeys,
+  defaultFlexType,
+  EMPTY_CATALOG,
+  useCatalog,
+  type Catalog,
+} from "@/queries/catalog"
+import { useMe } from "@/queries/me"
+import {
+  useCreateOrder,
+  useInvalidateOrders,
+  usePaymentStatus,
+} from "@/queries/orders"
 import { cn } from "@/lib/utils"
 import type { CatalogProduct } from "@/types/api"
 
-type Step = "order" | "confirm" | "creating" | "paying" | "done"
+// "paying" covers the success screen too: it shows once the polled order
+// leaves CREATED (see `paid` below), no extra state transition needed
+type Step = "order" | "confirm" | "creating" | "paying"
 
 interface OrderSheetProps {
   product: CatalogProduct | null
@@ -47,12 +61,12 @@ interface OrderSheetProps {
 
 export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderSheetProps) {
   const navigate = useNavigate()
-  const me = useAuthStore((s) => s.me)
-  const flexOptions = useCatalogStore((s) => s.flexOptions)
-  const countries = useCatalogStore((s) => s.countries)
-  const createOrder = useOrdersStore((s) => s.create)
-  const getOrder = useOrdersStore((s) => s.getOrder)
-  const reloadOrders = useOrdersStore((s) => s.load)
+  const queryClient = useQueryClient()
+  const isGuest = useAuthStore((s) => s.user?.guest ?? true)
+  const { data: me } = useMe()
+  const { flexOptions, countries } = useCatalog().data ?? EMPTY_CATALOG
+  const createOrder = useCreateOrder()
+  const invalidateOrders = useInvalidateOrders()
 
   const [step, setStep] = useState<Step>("order")
   const [plate, setPlate] = useState("")
@@ -75,7 +89,6 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   const [paymentLink, setPaymentLink] = useState<string | null>(null)
   // just the id — POST returns a slim stub; the poll fetches the full order
   const [createdOrder, setCreatedOrder] = useState<{ id: string } | null>(null)
-  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // popularity order (matches the app), skipping periods flagged "disabled"
   const periods = useMemo(() => {
@@ -103,10 +116,15 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
       setCreatedOrder(null)
       setDuplicateWarning(null)
       setFlexEnabled(true)
-      setFlexType(useCatalogStore.getState().defaultFlexType())
+      // read, not subscribed: a catalog refetch mid-order must not reset the form
+      setFlexType(
+        defaultFlexType(
+          queryClient.getQueryData<Catalog>(catalogKeys.all) ?? EMPTY_CATALOG
+        )
+      )
       setTerms(true)
     }
-  }, [open, product, periods])
+  }, [open, product, periods, queryClient])
 
   // a "from-tomorrow" period can't start today — bump the date forward
   useEffect(() => {
@@ -121,23 +139,9 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
     if (me?.email) setEmail(me.email)
   }, [me?.email])
 
-  // poll the created order while the user pays in the other tab
-  useEffect(() => {
-    if (step !== "paying" || !createdOrder) return
-    pollTimer.current = setInterval(async () => {
-      try {
-        const fresh = await getOrder(createdOrder.id)
-        if (fresh.status !== "CREATED") {
-          setStep("done")
-        }
-      } catch {
-        /* transient — keep polling */
-      }
-    }, 4000)
-    return () => {
-      if (pollTimer.current) clearInterval(pollTimer.current)
-    }
-  }, [step, createdOrder, getOrder])
+  // watch the created order while the user pays in the in-sheet iframe —
+  // polled every 4s until it leaves CREATED, which swaps in the success screen
+  const { paid } = usePaymentStatus(createdOrder?.id ?? null, step === "paying")
 
   const selectedPrice = product && period ? product.price[period] : null
   const vinRequired =
@@ -173,7 +177,6 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   const endDate = period ? addDays(startDate, Number(period)) - 60 : startDate
   const isToday = startDate === dayStart(0)
   const isTomorrow = startDate === dayStart(1)
-  const isGuest = me?.guest ?? true
   const emailValid = /.+@.+\..+/.test(email)
 
   // plates must be ≥3 chars with a country (helpers/vehicle.js#checkCars);
@@ -202,8 +205,9 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
     setStep("creating")
     try {
       const installationId = getInstallationId()
-      const result = await createOrder(
-        {
+      const result = await createOrder.mutateAsync({
+        allowDuplication: options.allowDuplication,
+        body: {
           terms_and_privacy_accepted: true,
           // ties this browser's web push registration (if any — see
           // AccountPage's Push notifications section) to the order's status
@@ -240,8 +244,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
               }
             : {}),
         },
-        options
-      )
+      })
       setCreatedOrder(result.orders[0] ?? null)
       // shown in an in-sheet iframe (the pay page ships
       // `frame-ancestors *` exactly for this embedded-webview use)
@@ -265,7 +268,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   }
 
   const finish = () => {
-    void reloadOrders({ silent: true })
+    void invalidateOrders()
     onClose()
     navigate("/")
   }
@@ -273,7 +276,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   const closeGuard = (next: boolean) => {
     if (!next) {
       if (step === "creating") return // don't dismiss mid-request
-      if (step === "done" || step === "paying") {
+      if (step === "paying") {
         finish()
         return
       }
@@ -289,10 +292,10 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
         </DrawerTitle>
 
         {step === "creating" && <CreatingScreen />}
-        {step === "paying" && (
+        {step === "paying" && !paid && (
           <PaymentModal paymentLink={paymentLink} onClose={finish} />
         )}
-        {step === "done" && <DoneScreen onFinish={finish} />}
+        {step === "paying" && paid && <DoneScreen onFinish={finish} />}
 
         {(step === "order" || step === "confirm") && (
           // plain block scroller — a flex column would give overflow-x rows an

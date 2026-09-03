@@ -1,8 +1,7 @@
-import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Check, ExternalLink, TriangleAlert, X } from "lucide-react"
 import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer"
-import { useOrdersStore } from "@/stores/orders"
+import { useInvalidateOrders, usePaymentStatus } from "@/queries/orders"
 
 /**
  * In-sheet checkout: the payment page rendered in an iframe (it ships
@@ -113,29 +112,11 @@ export function PaymentDrawer({
   onClose: () => void
 }) {
   const navigate = useNavigate()
-  const getOrder = useOrdersStore((s) => s.getOrder)
-  const reloadOrders = useOrdersStore((s) => s.load)
-  const [paid, setPaid] = useState(false)
-
-  useEffect(() => {
-    if (open) setPaid(false)
-  }, [open, orderId])
-
-  useEffect(() => {
-    if (!open || paid || !orderId) return
-    const timer = setInterval(async () => {
-      try {
-        const fresh = await getOrder(orderId)
-        if (fresh.status !== "CREATED") setPaid(true)
-      } catch {
-        /* transient — keep polling */
-      }
-    }, 4000)
-    return () => clearInterval(timer)
-  }, [open, paid, orderId, getOrder])
+  const invalidateOrders = useInvalidateOrders()
+  const { paid } = usePaymentStatus(orderId, open)
 
   const finish = () => {
-    void reloadOrders({ silent: true })
+    void invalidateOrders()
     onClose()
     navigate("/")
   }

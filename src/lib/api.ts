@@ -37,6 +37,14 @@ export class ApiRequestError extends Error {
   }
 }
 
+/** What to show a user for a failed request — surfaces Retry-After on 429s. */
+export function apiErrorMessage(e: unknown, fallback = "Something went wrong"): string {
+  if (e instanceof ApiRequestError) {
+    return e.retryAfter ? `${e.message} — try again in ${e.retryAfter}s` : e.message
+  }
+  return e instanceof Error ? e.message : fallback
+}
+
 function retryAfterSeconds(res: Response): number | undefined {
   const raw = res.headers.get("Retry-After")
   if (!raw) return undefined

@@ -3,12 +3,19 @@ import { persist } from "zustand/middleware"
 import { api, apiResult, configureApi, type StoredTokens } from "@/lib/api"
 import type {
   EmailRequiredResult,
-  Me,
   OtpStartResult,
-  SessionInfo,
   TokenPayload,
   TokenUser,
 } from "@/types/api"
+
+/**
+ * The auth SESSION — tokens and the user they were issued to. This is the
+ * one piece of state deliberately kept out of TanStack Query: the api client
+ * reads it synchronously to sign every request, and it must survive reloads
+ * (persisted). Everything fetched WITH these tokens (profile, orders, wallet…)
+ * lives in src/queries/*, keyed by the user id so a session change never
+ * shows one account's cache to another.
+ */
 
 /** 200 → tokens (signed in); 202 → email_required (finish via linkSocialEmail) */
 export type SocialVerifyResult =
@@ -17,8 +24,8 @@ export type SocialVerifyResult =
 
 interface AuthState {
   tokens: StoredTokens | null
+  /** id/email/guest as issued with the tokens (GET /public/me is queries/me.ts) */
   user: TokenUser | null
-  me: Me | null
   /** booting = restoring/creating the initial session */
   status: "booting" | "ready"
 
@@ -41,8 +48,6 @@ interface AuthState {
     challengeId: string
     code: string
   }) => Promise<void>
-  refreshMe: () => Promise<void>
-  fetchSessions: () => Promise<SessionInfo[]>
   logout: () => Promise<void>
   logoutAll: () => Promise<void>
 }
@@ -60,12 +65,10 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       tokens: null,
       user: null,
-      me: null,
       status: "booting",
 
       async bootstrap() {
-        const { tokens } = get()
-        if (!tokens) {
+        if (!get().tokens) {
           // first launch — the app works immediately on an anonymous session,
           // exactly like the mobile app (sign-in lives in Account).
           // Failure (rate limit, offline) is tolerated: ensureSession retries
@@ -75,11 +78,8 @@ export const useAuthStore = create<AuthState>()(
           } catch {
             /* retried on demand */
           }
-          set({ status: "ready" })
-          return
         }
         set({ status: "ready" })
-        void get().refreshMe()
       },
 
       async ensureSession() {
@@ -100,8 +100,7 @@ export const useAuthStore = create<AuthState>()(
           body: { device_name: deviceName() },
           auth: false,
         })
-        set({ tokens: toStoredTokens(result), user: result.user, me: null })
-        void get().refreshMe()
+        set({ tokens: toStoredTokens(result), user: result.user })
       },
 
       async startOtp(email: string) {
@@ -122,8 +121,7 @@ export const useAuthStore = create<AuthState>()(
           },
           auth: false,
         })
-        set({ tokens: toStoredTokens(result), user: result.user, me: null })
-        void get().refreshMe()
+        set({ tokens: toStoredTokens(result), user: result.user })
       },
 
       async fetchNonce() {
@@ -154,8 +152,7 @@ export const useAuthStore = create<AuthState>()(
         }
 
         const tokens = result as TokenPayload
-        set({ tokens: toStoredTokens(tokens), user: tokens.user, me: null })
-        void get().refreshMe()
+        set({ tokens: toStoredTokens(tokens), user: tokens.user })
         return { status: "ok" }
       },
 
@@ -173,27 +170,12 @@ export const useAuthStore = create<AuthState>()(
             auth: false,
           }
         )
-        set({ tokens: toStoredTokens(result), user: result.user, me: null })
-        void get().refreshMe()
-      },
-
-      async refreshMe() {
-        if (!get().tokens) return
-        try {
-          const me = await apiResult<Me>("/public/me")
-          set({ me, user: { id: me.id, email: me.email, guest: me.guest } })
-        } catch {
-          // token problems are handled by the api client hooks
-        }
-      },
-
-      async fetchSessions() {
-        return apiResult<SessionInfo[]>("/public/auth/sessions")
+        set({ tokens: toStoredTokens(result), user: result.user })
       },
 
       async logout() {
         const refreshToken = get().tokens?.refreshToken
-        set({ tokens: null, user: null, me: null })
+        set({ tokens: null, user: null })
         if (refreshToken) {
           try {
             await api("/public/auth/logout", {
@@ -217,7 +199,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           await api("/public/auth/logout-all", { method: "POST" })
         } finally {
-          set({ tokens: null, user: null, me: null })
+          set({ tokens: null, user: null })
           try {
             await get().continueAsGuest()
           } catch {
@@ -250,7 +232,6 @@ configureApi({
       tokens: toStoredTokens(payload),
       user: payload.user,
     }),
-  onSessionLost: () =>
-    useAuthStore.setState({ tokens: null, user: null, me: null }),
+  onSessionLost: () => useAuthStore.setState({ tokens: null, user: null }),
   ensureSession: () => useAuthStore.getState().ensureSession(),
 })

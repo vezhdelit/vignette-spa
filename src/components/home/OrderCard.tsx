@@ -19,6 +19,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Spinner } from "@/components/ui/spinner"
@@ -94,6 +95,16 @@ function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : "Something went wrong"
 }
 
+// Mirrors api/controllers/public-me.js#MODIFY_ERROR_MESSAGES — the `modify`
+// block only carries a reason_code on read, so the copy has to live here too.
+const MODIFY_REASON_MESSAGES: Record<string, string> = {
+  order_status: "Only pending, active, deferred or approved orders can be modified.",
+  already_modified:
+    "Vignette data can only be changed once. This order has already been modified.",
+  no_flex: "This order doesn't have the flexible option, so its data can't be changed.",
+  window_passed: "The window for changing this vignette has closed.",
+}
+
 export function OrderCard({
   order,
   onPay,
@@ -106,8 +117,8 @@ export function OrderCard({
   const [dialog, setDialog] = useState<"modify" | "transfer" | "refund" | null>(null)
   const guest = useAuthStore((s) => s.user?.guest ?? true)
 
-  // unpaid — the only sensible action is finishing the payment, so the card
-  // offers exactly that instead of the transfer/modify/pdf section
+  // unpaid — expanding the card offers just the Complete payment button
+  // instead of the transfer/modify/pdf section
   const awaitingPayment = order.status === "CREATED"
   const canPay = awaitingPayment && Boolean(order.payment_link) && onPay
 
@@ -137,139 +148,113 @@ export function OrderCard({
   }
 
   return (
-    <div className={cn("overflow-hidden rounded-[28px] p-2.5 pt-0", theme.wrapper)}>
-      {theme.banner ? (
+    <div className={cn("overflow-hidden rounded-[24px]", theme.wrapper)}>
+      {theme.banner &&
         <p
           className={cn(
-            "px-3 py-2.5 text-[13px] leading-snug font-bold whitespace-pre-line",
+            "px-3 py-1 text-[12px] leading-3 font-bold whitespace-pre-line",
             theme.bannerClass
           )}
         >
-          <TriangleAlert className="mr-1.5 -mt-0.5 inline size-4" />
+          <TriangleAlert className="mr-1 -mt-0.5 inline size-3" />
           {theme.banner.split("\n")[0]}
-          <TriangleAlert className="ml-1.5 -mt-0.5 inline size-4" />
+          <TriangleAlert className="ml-1 -mt-0.5 inline size-3" />
           {theme.banner.includes("\n") && (
             <>
               <br />
               {theme.banner.split("\n")[1]}
             </>
           )}
-        </p>
-      ) : (
-        <div className="h-2.5" />
-      )}
+        </p>}
 
-      {/* white inner card — tap to expand actions (or straight to payment) */}
+      {/* white inner card — tap to expand actions (payment button lives there too) */}
       <button
         type="button"
-        onClick={() =>
-          awaitingPayment
-            ? canPay && onPay?.(order)
-            : setExpanded((v) => !v)
-        }
+        onClick={() => setExpanded((v) => !v)}
         className="block w-full rounded-[22px] bg-white p-4 text-left"
       >
-        <div className="flex items-start gap-3">
-          <div className="flex-1">
-            <PlateBadge plate={car?.plate || "—"} country={car?.country || null} size="lg" />
-          </div>
-          <div className="relative shrink-0">
-            <span className="flex size-14 items-center justify-center rounded-full bg-brand-soft/60">
-              <Car className="size-8 text-[#5c7fd6]" strokeWidth={1.6} />
-            </span>
-            <span
-              className={cn(
-                "absolute top-0 right-0 size-4 rounded-full ring-2 ring-white",
-                theme.dot
-              )}
-            />
-            {order.vehicle_type && (
-              <span className="absolute -right-1 -bottom-1 rounded-md bg-brand-tint px-1.5 py-0.5 text-[10px] font-bold text-white">
-                {order.vehicle_type}
-              </span>
-            )}
-          </div>
-        </div>
-        <p className="mt-3 text-[15px] font-semibold tracking-wide">
-          <span className="text-navy-soft">FROM </span>
-          <span className="font-bold text-navy">{formatDotDateTime(order.start_date)}</span>
-          <span className="text-navy-soft"> until </span>
-          <span className="font-bold text-mint-deep">
-            {formatEndDate(order.end_date)}
-          </span>
-        </p>
-        {canPay && (
-          <span className="mt-3 block w-full rounded-2xl bg-mint py-3 text-center text-[15px] font-extrabold tracking-[0.2em] text-white uppercase">
-            Complete payment
-          </span>
-        )}
+        <OrderSummary order={order} theme={theme} />
       </button>
 
-      {/* expandable actions — pointless while the order is unpaid */}
-      {expanded && !awaitingPayment && (
-        <div className="px-1.5 pt-3 pb-1">
-          <div className="flex flex-wrap gap-2">
-            <ActionChip
-              label="Transfer Vignette"
-              icon={<ExternalLink className="size-3.5" />}
-              onClick={() => setDialog("transfer")}
-              disabled={guest}
-            />
-            <ActionChip
-              label="Modify Vignette Data"
-              icon={<Pencil className="size-3.5" />}
-              onClick={() => setDialog("modify")}
-              disabled={guest || order.modify?.eligible === false}
-            />
-            {refundAction && !guest && (
-              <ActionChip
-                label={`Refund${refundAction.percent ? ` ${refundAction.percent}%` : ""}`}
-                icon={<Undo2 className="size-3.5" />}
-                onClick={() => setDialog("refund")}
-              />
-            )}
-          </div>
+      {/* expandable actions */}
+      {expanded && (
+        <div className="px-3 pt-3 pb-1">
+          {awaitingPayment ? (
+            canPay && (
+              <button
+                type="button"
+                onClick={() => onPay?.(order)}
+                className="block w-full rounded-2xl bg-mint py-3 text-center text-[15px] font-extrabold tracking-[0.2em] text-white uppercase transition active:scale-[0.98]"
+              >
+                Complete payment
+              </button>
+            )
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-2">
+                <ActionChip
+                  label="Transfer Vignette"
+                  icon={<ExternalLink className="size-3.5" />}
+                  onClick={() => setDialog("transfer")}
+                  disabled={guest}
+                />
+                <ActionChip
+                  label="Modify Vignette Data"
+                  icon={<Pencil className="size-3.5" />}
+                  onClick={() => setDialog("modify")}
+                  disabled={guest}
+                />
+                {refundAction && !guest && (
+                  <ActionChip
+                    label={`Refund${refundAction.percent ? ` ${refundAction.percent}%` : ""}`}
+                    icon={<Undo2 className="size-3.5" />}
+                    onClick={() => setDialog("refund")}
+                  />
+                )}
+              </div>
 
-          <p className="mt-3 mb-2 text-[15px] font-semibold text-navy/90">
-            E-vignette Unique Identificator
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {order.receipt && (
-              <ActionChip
-                label="RECEIPT"
-                icon={<FileText className="size-4 rounded bg-white p-0.5 text-navy" />}
-                href={order.receipt}
-              />
-            )}
-            {car?.pdf && (
-              <ActionChip
-                label="E-VIGNETTE"
-                icon={<FileText className="size-4 rounded bg-white p-0.5 text-navy" />}
-                href={car.pdf}
-              />
-            )}
-            {!guest && (
-              <ActionChip
-                label="ADD TO"
-                trailing={
-                  <span className="rounded-md bg-white px-1.5 py-0.5 text-[11px] font-extrabold text-navy">
-                    WALLET
-                  </span>
-                }
-                onClick={downloadPass}
-              />
-            )}
-          </div>
-          {guest && (
-            <p className="mt-2 text-xs font-semibold text-navy/70">
-              Sign in on the Account tab to transfer, modify or add to Wallet.
-            </p>
+              <p className="mt-3 mb-2 text-[15px] font-semibold text-navy/90">
+                E-vignette Unique Identificator
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {order.receipt && (
+                  <ActionChip
+                    label="RECEIPT"
+                    icon={<FileText className="size-4 rounded bg-white p-0.5 text-navy" />}
+                    href={order.receipt}
+                  />
+                )}
+                {car?.pdf && (
+                  <ActionChip
+                    label="E-VIGNETTE"
+                    icon={<FileText className="size-4 rounded bg-white p-0.5 text-navy" />}
+                    href={car.pdf}
+                  />
+                )}
+                {!guest && (
+                  <ActionChip
+                    label="ADD TO"
+                    trailing={
+                      <span className="rounded-md bg-white px-1.5 py-0.5 text-[11px] font-extrabold text-navy">
+                        WALLET
+                      </span>
+                    }
+                    onClick={downloadPass}
+                  />
+                )}
+              </div>
+              {guest && (
+                <p className="mt-2 text-xs font-semibold text-navy/70">
+                  Sign in on the Account tab to transfer, modify or add to Wallet.
+                </p>
+              )}
+            </>
           )}
         </div>
       )}
 
       {/* footer strip */}
-      <div className="flex items-center justify-between px-3 pt-3 pb-1.5">
+      <div className="flex items-center justify-between px-3 py-1.5">
         <span className="flex min-w-0 items-center gap-2">
           <FlagRect code={order.country} className="h-5 w-7 shrink-0 rounded" />
           <span className="truncate text-xs font-extrabold whitespace-nowrap text-navy uppercase">
@@ -288,12 +273,8 @@ export function OrderCard({
           </span>
           <button
             type="button"
-            aria-label={awaitingPayment ? "Complete payment" : "Details"}
-            onClick={() =>
-              awaitingPayment
-                ? canPay && onPay?.(order)
-                : setExpanded((v) => !v)
-            }
+            aria-label="Details"
+            onClick={() => setExpanded((v) => !v)}
             className="text-navy/70"
           >
             <Info className="size-6" />
@@ -311,6 +292,42 @@ export function OrderCard({
         percent={refundAction?.percent}
       />
     </div>
+  )
+}
+
+/** plate + vehicle icon + validity dates — the body of the white card */
+function OrderSummary({ order, theme }: { order: Order; theme: StatusTheme }) {
+  const car = order.cars[0]
+  return (
+    <>
+      <div className="flex items-start gap-3">
+        <div className="flex-1">
+          <PlateBadge plate={car?.plate || "—"} country={car?.country || null} size="lg" />
+        </div>
+        <div className="relative shrink-0">
+          <span className="flex size-14 items-center justify-center rounded-full bg-brand-soft/60">
+            <Car className="size-8 text-[#5c7fd6]" strokeWidth={1.6} />
+          </span>
+          <span
+            className={cn(
+              "absolute top-0 right-0 size-4 rounded-full ring-2 ring-white",
+              theme.dot
+            )}
+          />
+          {order.vehicle_type && (
+            <span className="absolute -right-1 -bottom-1 rounded-md bg-brand-tint px-1.5 py-0.5 text-[10px] font-bold text-white">
+              {order.vehicle_type}
+            </span>
+          )}
+        </div>
+      </div>
+      <p className="mt-3 text-[15px] font-semibold tracking-wide">
+        <span className="text-navy-soft">FROM </span>
+        <span className="font-bold text-navy">{formatDotDateTime(order.start_date)}</span>
+        <span className="text-navy-soft"> until </span>
+        <span className="font-bold text-mint-deep">{formatEndDate(order.end_date)}</span>
+      </p>
+    </>
   )
 }
 
@@ -363,7 +380,14 @@ function ModifyDialog({
   const [plate, setPlate] = useState(car?.plate ?? "")
   const [country, setCountry] = useState(car?.country ?? "ua")
   const [vin, setVin] = useState("")
+  const [confirmed, setConfirmed] = useState(false)
   const [busy, setBusy] = useState(false)
+
+  const ineligible = order.modify?.eligible === false
+  const reasonMessage = ineligible
+    ? (order.modify?.reason_code && MODIFY_REASON_MESSAGES[order.modify.reason_code]) ||
+      "This vignette can no longer be modified."
+    : null
 
   const submit = async () => {
     setBusy(true)
@@ -385,14 +409,27 @@ function ModifyDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) {
+          onClose()
+          setConfirmed(false)
+        }
+      }}
+    >
       <DialogContent className="rounded-3xl">
         <DialogHeader>
-          <DialogTitle>Modify vignette data</DialogTitle>
+          <DialogTitle>Change vignette data</DialogTitle>
           <DialogDescription>
             The car plate can be changed before the vignette activates.
           </DialogDescription>
         </DialogHeader>
+        {reasonMessage && (
+          <p className="rounded-xl border border-pink px-3 py-2.5 text-sm font-semibold text-pink">
+            {reasonMessage}
+          </p>
+        )}
         <div className="space-y-3">
           <div className="space-y-1.5">
             <Label htmlFor={`plate-${order.id}`}>Registration plate</Label>
@@ -401,6 +438,7 @@ function ModifyDialog({
               value={plate}
               onChange={(e) => setPlate(e.target.value)}
               className="uppercase"
+              disabled={ineligible}
             />
           </div>
           <div className="space-y-1.5">
@@ -411,7 +449,8 @@ function ModifyDialog({
                 id={`country-${order.id}`}
                 value={country}
                 onChange={(e) => setCountry(e.target.value)}
-                className="h-9 flex-1 rounded-lg border border-input bg-transparent px-2 text-sm"
+                disabled={ineligible}
+                className="h-9 flex-1 rounded-lg border border-input bg-transparent px-2 text-sm disabled:opacity-50"
               >
                 {PLATE_COUNTRIES.map((c) => (
                   <option key={c} value={c}>
@@ -429,14 +468,26 @@ function ModifyDialog({
               onChange={(e) => setVin(e.target.value)}
               placeholder="Leave empty to keep current"
               className="uppercase"
+              disabled={ineligible}
             />
           </div>
+          {!ineligible && (
+            <label className="flex items-start gap-2 text-xs font-medium text-navy-soft">
+              <Checkbox
+                checked={confirmed}
+                onCheckedChange={(v) => setConfirmed(v === true)}
+                className="mt-0.5"
+              />
+              I confirm that the changes were made correctly and I am
+              responsible for their accuracy.
+            </label>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={busy || !plate.trim()}>
+          <Button onClick={submit} disabled={busy || ineligible || !confirmed || !plate.trim()}>
             {busy && <Spinner />} Save changes
           </Button>
         </DialogFooter>
@@ -456,6 +507,7 @@ function TransferDialog({
 }) {
   const transfer = useOrdersStore((s) => s.transfer)
   const [email, setEmail] = useState("")
+  const [confirmed, setConfirmed] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const submit = async () => {
@@ -472,30 +524,49 @@ function TransferDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) {
+          onClose()
+          setConfirmed(false)
+        }
+      }}
+    >
       <DialogContent className="rounded-3xl">
         <DialogHeader>
           <DialogTitle>Transfer vignette</DialogTitle>
           <DialogDescription>
-            Move this vignette to another vignette.id account. The recipient
-            must already be registered with this email.
+            You can transfer your vignette to another account only once. The
+            recipient must already be registered with this email.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-1.5">
-          <Label htmlFor={`transfer-${order.id}`}>Recipient email</Label>
-          <Input
-            id={`transfer-${order.id}`}
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="name@example.com"
-          />
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor={`transfer-${order.id}`}>Recipient email</Label>
+            <Input
+              id={`transfer-${order.id}`}
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="name@example.com"
+            />
+          </div>
+          <label className="flex items-start gap-2 text-xs font-medium text-navy-soft">
+            <Checkbox
+              checked={confirmed}
+              onCheckedChange={(v) => setConfirmed(v === true)}
+              className="mt-0.5"
+            />
+            I confirm that the changes were made correctly and I am
+            responsible for their accuracy.
+          </label>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={busy || !email.includes("@")}>
+          <Button onClick={submit} disabled={busy || !confirmed || !email.includes("@")}>
             {busy && <Spinner />} Transfer
           </Button>
         </DialogFooter>

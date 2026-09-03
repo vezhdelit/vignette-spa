@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import {
   BadgeCheck,
   Bell,
+  BellRing,
   Car,
   ChevronDown,
   Copy,
@@ -27,6 +28,13 @@ import {
 } from "@/lib/social"
 import { useAuthStore } from "@/stores/auth"
 import { useOrdersStore } from "@/stores/orders"
+import {
+  currentSubscription,
+  getInstallationId,
+  subscribe,
+  unsubscribe,
+  webPushSupported,
+} from "@/lib/webpush"
 import { cn } from "@/lib/utils"
 import type {
   AppNotification,
@@ -393,6 +401,7 @@ function SignedInSections() {
       <ReferralsSection />
       <VehiclesSection />
       <NotificationsSection />
+      <PushSection />
       <SessionsSection />
       <ConsentsSection />
     </div>
@@ -651,6 +660,149 @@ function NotificationsSection() {
             </div>
           ))}
       </SectionBody>
+    </Section>
+  )
+}
+
+/**
+ * Web push registration — the browser as a push install, mirroring what the
+ * iOS app does over APNs (vignette.id docs/push/web-integration.md). Enable
+ * walks permission -> service worker -> GET web-push-key -> subscribe ->
+ * POST /public/devices with the subscription as the token. The login state
+ * AT REGISTRATION TIME decides the binding (a session, guest or signed-in,
+ * is always attached — so after signing in on a previously-guest browser,
+ * hit Enable again to re-bind to the account). Orders placed from this
+ * browser carry the same installation_id (OrderSheet.tsx#submit), so it
+ * hears their status alerts even if it registered while signed out.
+ */
+function PushSection() {
+  const me = useAuthStore((s) => s.me)
+  const supported = webPushSupported()
+  const [permission, setPermission] = useState<NotificationPermission | "unsupported">(
+    supported ? Notification.permission : "unsupported"
+  )
+  const [subscription, setSubscription] = useState<PushSubscription | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null)
+
+  useEffect(() => {
+    if (!supported) return
+    currentSubscription()
+      .then(setSubscription)
+      .catch(() => {})
+  }, [supported])
+
+  const enable = async () => {
+    setBusy(true)
+    setStatus(null)
+    try {
+      const granted = await Notification.requestPermission()
+      setPermission(granted)
+      if (granted !== "granted") {
+        setStatus({
+          ok: false,
+          text:
+            granted === "denied"
+              ? "Permission denied — reset it in the browser's site settings to retry"
+              : "Permission dismissed — nothing registered",
+        })
+        return
+      }
+
+      // Client credential only — the VAPID key is server config, not
+      // user-scoped.
+      const { public_key } = await apiResult<{ public_key: string }>(
+        "/public/devices/web-push-key",
+        { auth: false }
+      )
+
+      const sub = await subscribe(public_key)
+
+      await apiResult("/public/devices", {
+        method: "POST",
+        body: {
+          installation_id: getInstallationId(),
+          platform: "web",
+          token: sub.toJSON(),
+        },
+      })
+
+      setSubscription(sub)
+      setStatus({
+        ok: true,
+        text: me?.email
+          ? `Registered — bound to ${me.email}`
+          : "Registered — orders placed from this browser will alert here",
+      })
+    } catch (e) {
+      setStatus({
+        ok: false,
+        text:
+          e instanceof ApiRequestError && e.type === "not_configured"
+            ? "Push notifications aren't set up on the server yet"
+            : errorMessage(e),
+      })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const disable = async () => {
+    setBusy(true)
+    setStatus(null)
+    try {
+      await unsubscribe()
+      await api("/public/devices", {
+        method: "DELETE",
+        body: { installation_id: getInstallationId() },
+      })
+      setSubscription(null)
+      setStatus({ ok: true, text: "Notifications turned off on this device" })
+    } catch (e) {
+      setStatus({ ok: false, text: errorMessage(e) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Section icon={BellRing} title="Push notifications">
+      {!supported ? (
+        <p className="py-1 text-sm font-semibold text-navy-soft">
+          This browser doesn't support push notifications.
+        </p>
+      ) : (
+        <>
+          <p className="text-sm font-medium text-navy-soft">
+            Get order status alerts on this device, even with the tab closed.
+          </p>
+          <button
+            type="button"
+            onClick={() => void (subscription ? disable() : enable())}
+            disabled={busy || permission === "denied"}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-brand py-2.5 text-sm font-extrabold text-white disabled:opacity-50"
+          >
+            {busy && <Spinner />}
+            {subscription ? "Turn off notifications" : "Turn on notifications"}
+          </button>
+          {permission === "denied" && (
+            <p className="mt-2 text-xs font-semibold text-navy-soft">
+              Blocked for this site — re-enable it in the browser's site
+              settings to retry.
+            </p>
+          )}
+          {status && (
+            <p
+              className={cn(
+                "mt-2 text-xs font-semibold",
+                status.ok ? "text-mint-deep" : "text-pink"
+              )}
+            >
+              {status.text}
+            </p>
+          )}
+        </>
+      )}
     </Section>
   )
 }

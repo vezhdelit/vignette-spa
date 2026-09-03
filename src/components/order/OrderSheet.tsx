@@ -28,6 +28,7 @@ import {
 } from "@/lib/format"
 import { ApiRequestError } from "@/lib/api"
 import { isValidVin } from "@/lib/vehicle"
+import { getInstallationId } from "@/lib/webpush"
 import { useAuthStore } from "@/stores/auth"
 import { useCatalogStore } from "@/stores/catalog"
 import { useOrdersStore } from "@/stores/orders"
@@ -189,9 +190,14 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
     setDuplicateWarning(null)
     setStep("creating")
     try {
+      const installationId = getInstallationId()
       const result = await createOrder(
         {
           terms_and_privacy_accepted: true,
+          // ties this browser's web push registration (if any — see
+          // AccountPage's Push notifications section) to the order's status
+          // alerts, even when it registered signed-out
+          ...(installationId ? { installation_id: installationId } : {}),
           cars: [
             {
               plate: plate.trim().toUpperCase().replace(/\s+/g, ""),

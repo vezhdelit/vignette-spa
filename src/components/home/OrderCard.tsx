@@ -10,6 +10,26 @@ import {
   Undo2,
 } from "lucide-react"
 import { toast } from "sonner"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
 import {
   Dialog,
   DialogContent,
@@ -18,10 +38,15 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import { PlateBadge } from "@/components/order/PlateBadge"
 import { FlagRect } from "@/lib/countries"
@@ -123,6 +148,7 @@ export function OrderCard({
   const car = order.cars[0]
   const countryName =
     COUNTRY_NAMES[order.country?.toLowerCase()] || order.country?.toUpperCase()
+  const [periodCount, periodUnit] = String(periodLabel(order.period)).split(" ")
 
   const refundAction = order.full_refund?.eligible
     ? order.full_refund
@@ -145,46 +171,44 @@ export function OrderCard({
   }
 
   return (
-    <div className={cn("overflow-hidden rounded-[24px]", theme.wrapper)}>
-      {theme.banner &&
-        <p
-          className={cn(
-            "px-3 py-1 text-[12px] leading-3 font-bold whitespace-pre-line",
-            theme.bannerClass
-          )}
-        >
-          <TriangleAlert className="mr-1 -mt-0.5 inline size-3" />
-          {theme.banner.split("\n")[0]}
-          <TriangleAlert className="ml-1 -mt-0.5 inline size-3" />
-          {theme.banner.includes("\n") && (
-            <>
-              <br />
-              {theme.banner.split("\n")[1]}
-            </>
-          )}
-        </p>}
+    <Collapsible open={expanded} onOpenChange={setExpanded} asChild>
+      <Card className={cn("gap-0 rounded-[24px] py-0 ring-0", theme.wrapper)}>
+        {theme.banner && (
+          <Alert
+            className={cn(
+              "items-center rounded-none border-0 bg-transparent px-3 py-1 [&>svg]:size-3 [&>svg]:translate-y-0",
+              theme.bannerClass
+            )}
+          >
+            <TriangleAlert className="text-current" />
+            <AlertDescription
+              className={cn(
+                "text-[12px] leading-3 font-bold whitespace-pre-line",
+                theme.bannerClass
+              )}
+            >
+              {theme.banner}
+            </AlertDescription>
+          </Alert>
+        )}
 
-      {/* white inner card — tap to expand actions (payment button lives there too) */}
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="block w-full rounded-[22px] bg-white p-4 text-left"
-      >
-        <OrderSummary order={order} theme={theme} />
-      </button>
+        {/* white inner card — tap to expand actions (payment button lives there too) */}
+        <CollapsibleTrigger className="block w-full rounded-[22px] bg-white p-4 text-left">
+          <OrderSummary order={order} theme={theme} />
+        </CollapsibleTrigger>
 
-      {/* expandable actions */}
-      {expanded && (
-        <div className="px-3 pt-3 pb-1">
+        {/* expandable actions */}
+        <CollapsibleContent className="px-3 pt-3 pb-1">
           {awaitingPayment ? (
             canPay && (
-              <button
-                type="button"
+              <Button
+                variant="mint"
+                size="xl"
+                className="h-12 w-full text-[15px] tracking-[0.2em]"
                 onClick={() => onPay?.(order)}
-                className="block w-full rounded-2xl bg-mint py-3 text-center text-[15px] font-extrabold tracking-[0.2em] text-white uppercase transition active:scale-[0.98]"
               >
                 Complete payment
-              </button>
+              </Button>
             )
           ) : (
             <>
@@ -232,9 +256,9 @@ export function OrderCard({
                   <ActionChip
                     label="ADD TO"
                     trailing={
-                      <span className="rounded-md bg-white px-1.5 py-0.5 text-[11px] font-extrabold text-navy">
+                      <Badge className="rounded-md bg-white px-1.5 py-0.5 text-[11px] font-extrabold text-navy">
                         WALLET
-                      </span>
+                      </Badge>
                     }
                     onClick={downloadPass}
                   />
@@ -247,48 +271,52 @@ export function OrderCard({
               )}
             </>
           )}
+        </CollapsibleContent>
+
+        {/* footer strip */}
+        <div className="flex items-center justify-between px-3 py-1.5">
+          <span className="flex min-w-0 items-center gap-2">
+            <FlagRect code={order.country} className="h-5 w-7 shrink-0 rounded" />
+            <span className="truncate text-xs font-extrabold whitespace-nowrap text-navy uppercase">
+              Vignette of {countryName}
+            </span>
+          </span>
+          <span className="flex items-center gap-2">
+            <ShieldCheck className="size-6 text-white" fill="#2fc78d" />
+            <Badge className="h-auto flex-col gap-0 rounded-md bg-white px-1.5 py-0.5 leading-none hover:bg-white">
+              <span className="text-[13px] font-extrabold text-pink">{periodCount}</span>
+              <span className="text-[8px] font-bold tracking-wider text-pink uppercase">
+                {periodUnit ?? "days"}
+              </span>
+            </Badge>
+            <CollapsibleTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Details"
+                className="text-navy/70 hover:bg-white/40 hover:text-navy"
+              >
+                <Info className="size-6" />
+              </Button>
+            </CollapsibleTrigger>
+          </span>
         </div>
-      )}
 
-      {/* footer strip */}
-      <div className="flex items-center justify-between px-3 py-1.5">
-        <span className="flex min-w-0 items-center gap-2">
-          <FlagRect code={order.country} className="h-5 w-7 shrink-0 rounded" />
-          <span className="truncate text-xs font-extrabold whitespace-nowrap text-navy uppercase">
-            Vignette of {countryName}
-          </span>
-        </span>
-        <span className="flex items-center gap-2">
-          <ShieldCheck className="size-6 text-white" fill="#2fc78d" />
-          <span className="flex flex-col items-center rounded-md bg-white px-1.5 py-0.5 leading-none">
-            <span className="text-[13px] font-extrabold text-pink">
-              {String(periodLabel(order.period)).split(" ")[0]}
-            </span>
-            <span className="text-[8px] font-bold tracking-wider text-pink uppercase">
-              {String(periodLabel(order.period)).split(" ")[1] ?? "days"}
-            </span>
-          </span>
-          <button
-            type="button"
-            aria-label="Details"
-            onClick={() => setExpanded((v) => !v)}
-            className="text-navy/70"
-          >
-            <Info className="size-6" />
-          </button>
-        </span>
-      </div>
-
-      <ModifyDialog order={order} open={dialog === "modify"} onClose={() => setDialog(null)} />
-      <TransferDialog order={order} open={dialog === "transfer"} onClose={() => setDialog(null)} />
-      <RefundDialog
-        order={order}
-        open={dialog === "refund"}
-        onClose={() => setDialog(null)}
-        amount={refundAction?.amount_eur}
-        percent={refundAction?.percent}
-      />
-    </div>
+        <ModifyDialog order={order} open={dialog === "modify"} onClose={() => setDialog(null)} />
+        <TransferDialog
+          order={order}
+          open={dialog === "transfer"}
+          onClose={() => setDialog(null)}
+        />
+        <RefundDialog
+          order={order}
+          open={dialog === "refund"}
+          onClose={() => setDialog(null)}
+          amount={refundAction?.amount_eur}
+          percent={refundAction?.percent}
+        />
+      </Card>
+    </Collapsible>
   )
 }
 
@@ -312,9 +340,9 @@ function OrderSummary({ order, theme }: { order: Order; theme: StatusTheme }) {
             )}
           />
           {order.vehicle_type && (
-            <span className="absolute -right-1 -bottom-1 rounded-md bg-brand-tint px-1.5 py-0.5 text-[10px] font-bold text-white">
+            <Badge className="absolute -right-1 -bottom-1 rounded-md bg-brand-tint px-1.5 py-0.5 text-[10px] font-bold text-white">
               {order.vehicle_type}
-            </span>
+            </Badge>
           )}
         </div>
       </div>
@@ -343,21 +371,25 @@ function ActionChip({
   href?: string
   disabled?: boolean
 }) {
-  const className = cn(
-    "flex items-center gap-2 rounded-full bg-[#3a3f47] px-4 py-2 text-[13px] font-bold text-white transition active:scale-95",
-    disabled && "opacity-45"
-  )
   if (href) {
     return (
-      <a href={href} target="_blank" rel="noreferrer" className={className}>
-        {label} {icon} {trailing}
-      </a>
+      <Button asChild variant="chip" size="chip">
+        <a href={href} target="_blank" rel="noreferrer">
+          {label} {icon} {trailing}
+        </a>
+      </Button>
     )
   }
   return (
-    <button type="button" onClick={onClick} disabled={disabled} className={className}>
+    <Button
+      variant="chip"
+      size="chip"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(disabled && "opacity-45")}
+    >
       {label} {icon} {trailing}
-    </button>
+    </Button>
   )
 }
 
@@ -431,9 +463,12 @@ function ModifyDialog({
           </DialogDescription>
         </DialogHeader>
         {reasonMessage && (
-          <p className="rounded-xl border border-pink px-3 py-2.5 text-sm font-semibold text-pink">
-            {reasonMessage}
-          </p>
+          <Alert variant="destructive" className="border-pink text-pink">
+            <TriangleAlert />
+            <AlertDescription className="font-semibold text-pink">
+              {reasonMessage}
+            </AlertDescription>
+          </Alert>
         )}
         <div className="space-y-3">
           <div className="space-y-1.5">
@@ -448,22 +483,19 @@ function ModifyDialog({
           </div>
           <div className="space-y-1.5">
             <Label htmlFor={`country-${order.id}`}>Plate country</Label>
-            <div className="flex items-center gap-2">
-              <Flag code={country} className="h-5 w-7 rounded" />
-              <select
-                id={`country-${order.id}`}
-                value={country}
-                onChange={(e) => setCountry(e.target.value)}
-                disabled={ineligible}
-                className="h-9 flex-1 rounded-lg border border-input bg-transparent px-2 text-sm disabled:opacity-50"
-              >
+            <Select value={country} onValueChange={setCountry} disabled={ineligible}>
+              <SelectTrigger id={`country-${order.id}`} className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
                 {PLATE_COUNTRIES.map((c) => (
-                  <option key={c} value={c}>
+                  <SelectItem key={c} value={c} className="[&_span_svg]:size-full">
+                    <Flag code={c} className="h-3.5 w-5 rounded-[2px]" />
                     {COUNTRY_NAMES[c]}
-                  </option>
+                  </SelectItem>
                 ))}
-              </select>
-            </div>
+              </SelectContent>
+            </Select>
           </div>
           {vinRequired && (
             <div className="space-y-1.5">
@@ -485,15 +517,17 @@ function ModifyDialog({
             </div>
           )}
           {!ineligible && (
-            <label className="flex items-start gap-2 text-xs font-medium text-navy-soft">
+            <Label className="flex items-start gap-2 text-xs font-medium text-navy-soft">
               <Checkbox
                 checked={confirmed}
                 onCheckedChange={(v) => setConfirmed(v === true)}
                 className="mt-0.5"
               />
-              I confirm that the changes were made correctly and I am
-              responsible for their accuracy.
-            </label>
+              <span>
+                I confirm that the changes were made correctly and I am responsible
+                for their accuracy.
+              </span>
+            </Label>
           )}
         </div>
         <DialogFooter>
@@ -564,15 +598,17 @@ function TransferDialog({
               placeholder="name@example.com"
             />
           </div>
-          <label className="flex items-start gap-2 text-xs font-medium text-navy-soft">
+          <Label className="flex items-start gap-2 text-xs font-medium text-navy-soft">
             <Checkbox
               checked={confirmed}
               onCheckedChange={(v) => setConfirmed(v === true)}
               className="mt-0.5"
             />
-            I confirm that the changes were made correctly and I am
-            responsible for their accuracy.
-          </label>
+            <span>
+              I confirm that the changes were made correctly and I am responsible
+              for their accuracy.
+            </span>
+          </Label>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
@@ -590,6 +626,7 @@ function TransferDialog({
   )
 }
 
+/** Irreversible → an AlertDialog (no outside-click dismiss) with a destructive action. */
 function RefundDialog({
   order,
   open,
@@ -616,26 +653,34 @@ function RefundDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="rounded-3xl">
-        <DialogHeader>
-          <DialogTitle>Refund this vignette?</DialogTitle>
-          <DialogDescription>
+    <AlertDialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <AlertDialogContent className="rounded-3xl">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Refund this vignette?</AlertDialogTitle>
+          <AlertDialogDescription>
             {percent === 100
               ? `You'll get a full refund${amount ? ` of ${amount} €` : ""}.`
               : `A partial refund of ${percent ?? 50}%${amount ? ` (${amount} €)` : ""} is available.`}{" "}
             The vignette stops being valid immediately.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Keep vignette
-          </Button>
-          <Button variant="destructive" onClick={submit} disabled={refund.isPending}>
-            {refund.isPending && <Spinner />} Refund
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={refund.isPending}>Keep vignette</AlertDialogCancel>
+          <AlertDialogAction asChild>
+            <Button
+              variant="destructive"
+              disabled={refund.isPending}
+              onClick={(e) => {
+                // stay open until the request settles (Radix closes on click otherwise)
+                e.preventDefault()
+                void submit()
+              }}
+            >
+              {refund.isPending && <Spinner />} Refund
+            </Button>
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }

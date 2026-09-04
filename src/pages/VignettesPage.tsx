@@ -1,5 +1,18 @@
 import { useEffect, useState } from "react"
 import { useSearchParams } from "react-router-dom"
+import { TriangleAlert } from "lucide-react"
+import {
+  Alert,
+  AlertAction,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+} from "@/components/ui/empty"
 import { apiErrorMessage } from "@/lib/api"
 import { EMPTY_CATALOG, productsFor, useCatalog } from "@/queries/catalog"
 import { CountryCarousel } from "@/components/vignettes/CountryCarousel"
@@ -62,23 +75,26 @@ export function VignettesPage() {
             <ProductCardSkeleton />
           </>
         ) : catalogQuery.isError ? (
-          <div className="rounded-[28px] bg-white/90 p-6 text-center">
-            <p className="font-bold text-navy">Couldn't load the catalog</p>
-            <p className="mt-1 text-sm font-medium text-navy-soft">
+          <Alert variant="destructive" className="rounded-[28px] border-0 bg-white/90">
+            <TriangleAlert />
+            <AlertTitle className="font-bold">Couldn't load the catalog</AlertTitle>
+            <AlertDescription className="font-medium text-navy-soft">
               {apiErrorMessage(catalogQuery.error, "Failed to load catalog")}
-            </p>
-            <button
-              type="button"
-              onClick={() => void catalogQuery.refetch()}
-              className="mt-4 rounded-full bg-brand px-6 py-2.5 font-bold text-white"
-            >
-              Retry
-            </button>
-          </div>
+            </AlertDescription>
+            <AlertAction>
+              <Button variant="brand" size="sm" onClick={() => void catalogQuery.refetch()}>
+                Retry
+              </Button>
+            </AlertAction>
+          </Alert>
         ) : products.length === 0 ? (
-          <p className="pt-8 text-center font-semibold text-white/90">
-            No vignettes available for this country yet.
-          </p>
+          <Empty className="border-0 pt-8">
+            <EmptyHeader>
+              <EmptyDescription className="font-semibold text-white/90">
+                No vignettes available for this country yet.
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : (
           products.map((product) => (
             <ProductCard

@@ -1,4 +1,5 @@
 import { Mail, MessageCircle, Globe, ChevronRight } from "lucide-react"
+import { Card, CardContent } from "@/components/ui/card"
 
 const CHANNELS = [
   {
@@ -36,18 +37,22 @@ export function SupportPage() {
             href={href}
             target={href.startsWith("http") ? "_blank" : undefined}
             rel="noreferrer"
-            className="flex items-center gap-4 rounded-[24px] bg-white p-4 shadow-[0_8px_24px_rgba(0,60,120,0.1)] transition active:scale-[0.99]"
+            className="block rounded-[24px] transition active:scale-[0.99]"
           >
-            <span className="flex size-12 items-center justify-center rounded-2xl bg-brand-soft/60">
-              <Icon className="size-6 text-brand" />
-            </span>
-            <span className="flex-1">
-              <span className="block text-[17px] font-extrabold text-navy">{title}</span>
-              <span className="block text-sm font-semibold text-navy-soft">
-                {subtitle}
-              </span>
-            </span>
-            <ChevronRight className="size-5 text-navy-soft" />
+            <Card className="rounded-[24px] shadow-[0_8px_24px_rgba(0,60,120,0.1)] ring-0">
+              <CardContent className="flex items-center gap-4">
+                <span className="flex size-12 items-center justify-center rounded-2xl bg-brand-soft/60">
+                  <Icon className="size-6 text-brand" />
+                </span>
+                <span className="flex-1">
+                  <span className="block text-[17px] font-extrabold text-navy">{title}</span>
+                  <span className="block text-sm font-semibold text-navy-soft">
+                    {subtitle}
+                  </span>
+                </span>
+                <ChevronRight className="size-5 text-navy-soft" />
+              </CardContent>
+            </Card>
           </a>
         ))}
       </div>

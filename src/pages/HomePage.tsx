@@ -1,5 +1,13 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { TriangleAlert } from "lucide-react"
+import {
+  Alert,
+  AlertAction,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
 import { apiErrorMessage } from "@/lib/api"
 import { useAuthStore } from "@/stores/auth"
 import { useOrders } from "@/queries/orders"
@@ -36,19 +44,18 @@ export function HomePage() {
   return (
     <div className="space-y-4 pt-1">
       {isError && visible.length === 0 ? (
-        <div className="rounded-[28px] bg-white/95 p-5 text-center">
-          <p className="font-bold text-navy">Couldn't load your vignettes</p>
-          <p className="mt-1 text-sm font-medium text-navy-soft">
+        <Alert variant="destructive" className="rounded-[28px] border-0 bg-white/95">
+          <TriangleAlert />
+          <AlertTitle className="font-bold">Couldn't load your vignettes</AlertTitle>
+          <AlertDescription className="font-medium text-navy-soft">
             {apiErrorMessage(error, "Failed to load orders")}
-          </p>
-          <button
-            type="button"
-            onClick={() => void refetch()}
-            className="mt-4 rounded-full bg-brand px-6 py-2.5 font-bold text-white"
-          >
-            Retry
-          </button>
-        </div>
+          </AlertDescription>
+          <AlertAction>
+            <Button variant="brand" size="sm" onClick={() => void refetch()}>
+              Retry
+            </Button>
+          </AlertAction>
+        </Alert>
       ) : booting ? (
         <>
           <OrderCardSkeleton />
@@ -62,16 +69,17 @@ export function HomePage() {
             <OrderCard key={order.id} order={order} onPay={setPaying} />
           ))}
           {hasNextPage && (
-            <button
-              type="button"
+            <Button
+              variant="glass"
+              size="pill"
+              className="w-full"
               disabled={isFetchingNextPage}
               onClick={() => void fetchNextPage()}
-              className="w-full rounded-full bg-white/20 py-3 text-[15px] font-extrabold text-white transition active:scale-[0.98] disabled:opacity-60"
             >
               {isFetchingNextPage
                 ? "Loading…"
                 : `Load more (${pagination.current}/${pagination.total})`}
-            </button>
+            </Button>
           )}
         </>
       )}

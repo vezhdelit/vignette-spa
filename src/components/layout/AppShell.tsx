@@ -1,5 +1,6 @@
 import { Outlet } from "react-router-dom"
 import { Bell } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { BottomNav } from "./BottomNav"
 
 export function Logo({ className }: { className?: string }) {
@@ -20,13 +21,14 @@ export function AppShell() {
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-brand">
       <header className="flex items-center justify-between px-5 pt-4 pb-3">
         <Logo />
-        <button
-          type="button"
-          className="text-white transition-transform active:scale-95"
+        <Button
+          variant="ghost"
+          size="icon-lg"
           aria-label="Notifications"
+          className="text-white hover:bg-white/15 hover:text-white active:scale-95"
         >
           <Bell className="size-7 fill-white" />
-        </button>
+        </Button>
       </header>
 
       {/* room for the floating nav pill */}

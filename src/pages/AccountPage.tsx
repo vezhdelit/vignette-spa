@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useMutation } from "@tanstack/react-query"
+import { REGEXP_ONLY_DIGITS } from "input-otp"
 import {
   BadgeCheck,
   Bell,
@@ -11,10 +12,30 @@ import {
   LogOut,
   MonitorSmartphone,
   ShieldCheck,
+  TriangleAlert,
   UserRound,
   Wallet as WalletIcon,
 } from "lucide-react"
 import { toast } from "sonner"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+} from "@/components/ui/empty"
+import { Input } from "@/components/ui/input"
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
+import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { PlateBadge } from "@/components/order/PlateBadge"
 import { apiErrorMessage, ApiRequestError } from "@/lib/api"
@@ -54,30 +75,34 @@ export function AccountPage() {
       <h1 className="px-1 text-[26px] font-extrabold text-white">Account</h1>
 
       {/* profile card */}
-      <div className="flex items-center gap-4 rounded-[24px] bg-white p-4">
-        <span className="flex size-14 items-center justify-center rounded-full bg-brand-soft/60">
-          <UserRound className="size-8 text-brand" />
-        </span>
-        <div className="min-w-0 flex-1">
-          {status === "booting" ? (
-            <div className="h-5 w-32 animate-pulse rounded-full bg-cloud" />
-          ) : (
-            <>
-              <p className="truncate text-[17px] font-extrabold text-navy">
-                {isGuest ? "Guest" : (me?.email ?? user?.email ?? "—")}
-              </p>
-              <p className="text-[13px] font-semibold text-navy-soft">
-                {isGuest
-                  ? "Sign in to keep your vignettes across devices"
-                  : me?.created_at
-                    ? `Member since ${formatDate(me.created_at)}`
-                    : "Signed in"}
-              </p>
-            </>
-          )}
-        </div>
-        {!isGuest && <BadgeCheck className="size-6 text-mint-deep" />}
-      </div>
+      <Card className="rounded-[24px] ring-0">
+        <CardContent className="flex items-center gap-4">
+          <Avatar className="size-14 bg-brand-soft/60">
+            <AvatarFallback className="bg-transparent">
+              <UserRound className="size-8 text-brand" />
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0 flex-1">
+            {status === "booting" ? (
+              <Skeleton className="h-5 w-32 rounded-full bg-cloud" />
+            ) : (
+              <>
+                <p className="truncate text-[17px] font-extrabold text-navy">
+                  {isGuest ? "Guest" : (me?.email ?? user?.email ?? "—")}
+                </p>
+                <p className="text-[13px] font-semibold text-navy-soft">
+                  {isGuest
+                    ? "Sign in to keep your vignettes across devices"
+                    : me?.created_at
+                      ? `Member since ${formatDate(me.created_at)}`
+                      : "Signed in"}
+                </p>
+              </>
+            )}
+          </div>
+          {!isGuest && <BadgeCheck className="size-6 text-mint-deep" />}
+        </CardContent>
+      </Card>
 
       {isGuest ? <SignInCard /> : <SignedInSections />}
 
@@ -276,120 +301,142 @@ function SignInCard() {
   const showOtpForm = mode.kind === "otp" || mode.kind === "link-otp"
 
   return (
-    <div className="rounded-[24px] bg-white p-5">
-      <h2 className="text-lg font-extrabold text-navy">Sign in</h2>
+    <Card className="rounded-[24px] ring-0 [--card-spacing:--spacing(5)]">
+      <CardContent>
+        <h2 className="text-lg font-extrabold text-navy">Sign in</h2>
 
-      {mode.kind === "link-email" && (
-        <p className="mt-2 rounded-xl bg-brand-soft/50 px-3 py-2 text-sm font-semibold text-navy">
-          Your {mode.provider === "apple" ? "Apple ID" : "Google account"} didn't
-          share a usable email. Enter your real email — we'll verify it with a
-          code and link it to your {mode.provider} sign-in.
-        </p>
-      )}
+        {mode.kind === "link-email" && (
+          <Alert className="mt-2 rounded-xl border-0 bg-brand-soft/50 text-navy">
+            <AlertDescription className="font-semibold text-navy">
+              Your {mode.provider === "apple" ? "Apple ID" : "Google account"} didn't
+              share a usable email. Enter your real email — we'll verify it with a
+              code and link it to your {mode.provider} sign-in.
+            </AlertDescription>
+          </Alert>
+        )}
 
-      {showEmailForm && (
-        <>
-          {mode.kind === "email" && (
-            <p className="mt-1 text-sm font-semibold text-navy-soft">
-              We'll email you a 6-digit code. No password needed.
-            </p>
-          )}
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && emailValid && start()}
-            placeholder="Email"
-            className="mt-4 w-full rounded-2xl bg-[#f1f4f8] px-4 py-3.5 text-center text-lg font-semibold text-navy outline-none placeholder:text-navy-soft"
-          />
-          <button
-            type="button"
-            disabled={busy || !emailValid}
-            onClick={start}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-pink py-3.5 text-lg font-extrabold tracking-wider text-white uppercase transition active:scale-[0.98] disabled:opacity-50"
-          >
-            {busy && <Spinner className="text-white" />} Send code
-          </button>
-        </>
-      )}
-
-      {showOtpForm && (
-        <>
-          <p className="mt-1 text-sm font-semibold text-navy-soft">
-            Enter the code we sent to{" "}
-            <span className="text-navy">{mode.email}</span>
-          </p>
-          <input
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            maxLength={6}
-            value={code}
-            onChange={(e) => {
-              const value = e.target.value.replace(/\D/g, "")
-              setCode(value)
-              if (value.length === 6) void verify(value)
-            }}
-            placeholder="••••••"
-            className="mt-4 w-full rounded-2xl bg-[#f1f4f8] px-4 py-3.5 text-center text-3xl font-extrabold tracking-[0.5em] text-navy outline-none placeholder:text-navy-soft/50"
-          />
-          <div className="mt-3 flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() =>
-                setMode(
-                  mode.kind === "link-otp"
-                    ? {
-                        kind: "link-email",
-                        provider: mode.provider,
-                        linkToken: mode.linkToken,
-                      }
-                    : { kind: "email" }
-                )
-              }
-              className="text-sm font-bold text-navy-soft"
-            >
-              Change email
-            </button>
-            <button
-              type="button"
-              disabled={resendIn > 0 || busy}
+        {showEmailForm && (
+          <>
+            {mode.kind === "email" && (
+              <p className="mt-1 text-sm font-semibold text-navy-soft">
+                We'll email you a 6-digit code. No password needed.
+              </p>
+            )}
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && emailValid && start()}
+              placeholder="Email"
+              aria-label="Email"
+              className="mt-4 h-auto w-full rounded-2xl border-0 bg-[#f1f4f8] px-4 py-3.5 text-center text-lg font-semibold text-navy shadow-none placeholder:text-navy-soft md:text-lg"
+            />
+            <Button
+              variant="pink"
+              size="xl"
+              className="mt-3 w-full text-lg tracking-wider"
+              disabled={busy || !emailValid}
               onClick={start}
-              className="text-sm font-bold text-brand disabled:opacity-50"
             >
-              {resendIn > 0 ? `Resend in ${resendIn}s` : "Resend code"}
-            </button>
-          </div>
-          {busy && (
-            <p className="mt-3 flex items-center justify-center gap-2 text-sm font-semibold text-navy-soft">
-              <Spinner /> Verifying…
-            </p>
-          )}
-        </>
-      )}
+              {busy && <Spinner className="text-white" />} Send code
+            </Button>
+          </>
+        )}
 
-      {/* social sign-in — only when the env configures the provider */}
-      {mode.kind === "email" && (GOOGLE_CLIENT_ID || APPLE_CLIENT_ID) && (
-        <div className="mt-4 border-t border-[#eef2f6] pt-4">
-          <p className="mb-3 text-center text-xs font-bold tracking-wider text-navy-soft uppercase">
-            or continue with
-          </p>
-          <div className="space-y-2.5">
-            {GOOGLE_CLIENT_ID && (
-              <div ref={googleRef} className="flex justify-center" />
-            )}
-            {APPLE_CLIENT_ID && (
-              <button
-                type="button"
-                onClick={onAppleClick}
-                className="mx-auto flex w-full max-w-[400px] items-center justify-center gap-2 rounded-full bg-black py-2.5 text-[15px] font-bold text-white transition active:scale-[0.98]"
+        {showOtpForm && (
+          <>
+            <p className="mt-1 text-sm font-semibold text-navy-soft">
+              Enter the code we sent to{" "}
+              <span className="text-navy">{mode.email}</span>
+            </p>
+            <InputOTP
+              autoFocus
+              maxLength={6}
+              pattern={REGEXP_ONLY_DIGITS}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              value={code}
+              onChange={(value) => {
+                setCode(value)
+                if (value.length === 6) void verify(value)
+              }}
+              containerClassName="mt-4 justify-center"
+            >
+              <InputOTPGroup className="gap-2">
+                {Array.from({ length: 6 }, (_, i) => (
+                  <InputOTPSlot
+                    key={i}
+                    index={i}
+                    className="size-12 rounded-2xl border border-[#e3ebf3] bg-[#f1f4f8] text-2xl font-extrabold text-navy first:rounded-2xl last:rounded-2xl"
+                  />
+                ))}
+              </InputOTPGroup>
+            </InputOTP>
+            <div className="mt-3 flex items-center justify-between">
+              <Button
+                variant="link"
+                size="sm"
+                className="px-0 font-bold text-navy-soft"
+                onClick={() =>
+                  setMode(
+                    mode.kind === "link-otp"
+                      ? {
+                          kind: "link-email",
+                          provider: mode.provider,
+                          linkToken: mode.linkToken,
+                        }
+                      : { kind: "email" }
+                  )
+                }
               >
-                 Continue with Apple
-              </button>
+                Change email
+              </Button>
+              <Button
+                variant="link"
+                size="sm"
+                className="px-0 font-bold text-brand"
+                disabled={resendIn > 0 || busy}
+                onClick={start}
+              >
+                {resendIn > 0 ? `Resend in ${resendIn}s` : "Resend code"}
+              </Button>
+            </div>
+            {busy && (
+              <p className="mt-3 flex items-center justify-center gap-2 text-sm font-semibold text-navy-soft">
+                <Spinner /> Verifying…
+              </p>
             )}
+          </>
+        )}
+
+        {/* social sign-in — only when the env configures the provider */}
+        {mode.kind === "email" && (GOOGLE_CLIENT_ID || APPLE_CLIENT_ID) && (
+          <div className="mt-4">
+            <div className="relative flex items-center">
+              <Separator className="flex-1" />
+              <span className="px-3 text-xs font-bold tracking-wider text-navy-soft uppercase">
+                or continue with
+              </span>
+              <Separator className="flex-1" />
+            </div>
+            <div className="mt-4 space-y-2.5">
+              {GOOGLE_CLIENT_ID && (
+                <div ref={googleRef} className="flex justify-center" />
+              )}
+              {APPLE_CLIENT_ID && (
+                <Button
+                  size="pill"
+                  onClick={onAppleClick}
+                  className="mx-auto flex w-full max-w-[400px] bg-black text-[15px] font-bold text-white hover:bg-black/90 active:scale-[0.98]"
+                >
+                   Continue with Apple
+                </Button>
+              )}
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -424,9 +471,9 @@ function SignedInSections() {
 }
 
 /**
- * Collapsible white card. Children mount only while expanded — that is what
- * makes each body's query lazy: nothing is fetched until the user opens the
- * section, and the cache serves the next open instantly.
+ * Collapsible white card. CollapsibleContent mounts its children only while
+ * open — that is what makes each body's query lazy: nothing is fetched until
+ * the user opens the section, and the cache serves the next open instantly.
  */
 function Section({
   icon: Icon,
@@ -437,25 +484,19 @@ function Section({
   title: string
   children: React.ReactNode
 }) {
-  const [open, setOpen] = useState(false)
-
   return (
-    <div className="overflow-hidden rounded-[24px] bg-white">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-3.5 p-4 text-left"
-      >
-        <span className="flex size-11 items-center justify-center rounded-2xl bg-brand-soft/60">
-          <Icon className="size-5.5 text-brand" />
-        </span>
-        <span className="flex-1 text-[16px] font-extrabold text-navy">{title}</span>
-        <ChevronDown
-          className={cn("size-5 text-navy-soft transition-transform", open && "rotate-180")}
-        />
-      </button>
-      {open && <div className="px-4 pb-4">{children}</div>}
-    </div>
+    <Collapsible asChild>
+      <Card className="gap-0 rounded-[24px] py-0 ring-0">
+        <CollapsibleTrigger className="group flex w-full items-center gap-3.5 p-4 text-left">
+          <span className="flex size-11 items-center justify-center rounded-2xl bg-brand-soft/60">
+            <Icon className="size-5.5 text-brand" />
+          </span>
+          <span className="flex-1 text-[16px] font-extrabold text-navy">{title}</span>
+          <ChevronDown className="size-5 text-navy-soft transition-transform group-data-[state=open]:rotate-180" />
+        </CollapsibleTrigger>
+        <CollapsibleContent className="px-4 pb-4">{children}</CollapsibleContent>
+      </Card>
+    </Collapsible>
   )
 }
 
@@ -475,11 +516,31 @@ function SectionBody({
     )
   if (query.error)
     return (
-      <p className="py-2 text-sm font-semibold text-pink">
-        {apiErrorMessage(query.error)}
-      </p>
+      <Alert variant="destructive" className="border-pink text-pink">
+        <TriangleAlert />
+        <AlertDescription className="font-semibold text-pink">
+          {apiErrorMessage(query.error)}
+        </AlertDescription>
+      </Alert>
     )
   return <>{children}</>
+}
+
+function EmptyNote({ children }: { children: React.ReactNode }) {
+  return (
+    <Empty className="border-0 p-1 py-1">
+      <EmptyHeader>
+        <EmptyDescription className="text-sm font-semibold text-navy-soft">
+          {children}
+        </EmptyDescription>
+      </EmptyHeader>
+    </Empty>
+  )
+}
+
+/** the light stat / list tile used inside the sections */
+function Tile({ className, ...props }: React.ComponentProps<"div">) {
+  return <div className={cn("rounded-2xl bg-[#f1f4f8] p-3", className)} {...props} />
 }
 
 function WalletBody() {
@@ -489,7 +550,7 @@ function WalletBody() {
     <SectionBody query={query}>
       {data && (
         <div className="flex gap-3">
-          <div className="flex-1 rounded-2xl bg-[#f1f4f8] p-3.5 text-center">
+          <Tile className="flex-1 p-3.5 text-center">
             {/* balance/bonuses arrive as integer cents */}
             <p className="text-2xl font-extrabold text-navy">
               {formatCents(data.balance, data.currency)}
@@ -497,15 +558,15 @@ function WalletBody() {
             <p className="text-xs font-bold tracking-wider text-navy-soft uppercase">
               Balance
             </p>
-          </div>
-          <div className="flex-1 rounded-2xl bg-[#f1f4f8] p-3.5 text-center">
+          </Tile>
+          <Tile className="flex-1 p-3.5 text-center">
             <p className="text-2xl font-extrabold text-navy">
               {formatCents(data.bonuses, data.currency)}
             </p>
             <p className="text-xs font-bold tracking-wider text-navy-soft uppercase">
               Bonuses
             </p>
-          </div>
+          </Tile>
         </div>
       )}
     </SectionBody>
@@ -519,17 +580,17 @@ function ReferralsBody() {
     <SectionBody query={query}>
       {data && (
         <>
-          <button
-            type="button"
+          <Button
+            variant="secondary"
             onClick={() => {
               navigator.clipboard.writeText(data.link)
               toast.success("Referral link copied")
             }}
-            className="flex w-full items-center justify-between rounded-2xl bg-[#f1f4f8] px-4 py-3"
+            className="h-auto w-full justify-between rounded-2xl bg-[#f1f4f8] px-4 py-3 text-sm font-bold text-navy hover:bg-[#e8edf3]"
           >
-            <span className="truncate text-sm font-bold text-navy">{data.link}</span>
+            <span className="truncate">{data.link}</span>
             <Copy className="ml-2 size-4 shrink-0 text-navy-soft" />
-          </button>
+          </Button>
           <div className="mt-3 flex gap-3 text-center">
             {[
               { label: "Invited", value: String(data.invited) },
@@ -537,12 +598,12 @@ function ReferralsBody() {
               // income is integer cents
               { label: "Income", value: formatCents(data.income) },
             ].map(({ label, value }) => (
-              <div key={label} className="flex-1 rounded-2xl bg-[#f1f4f8] p-3">
+              <Tile key={label} className="flex-1">
                 <p className="text-lg font-extrabold text-navy">{value}</p>
                 <p className="text-[11px] font-bold tracking-wider text-navy-soft uppercase">
                   {label}
                 </p>
-              </div>
+              </Tile>
             ))}
           </div>
         </>
@@ -558,9 +619,7 @@ function VehiclesBody() {
     <SectionBody query={query}>
       {data &&
         (data.length === 0 ? (
-          <p className="py-1 text-sm font-semibold text-navy-soft">
-            Vehicles from your orders will appear here.
-          </p>
+          <EmptyNote>Vehicles from your orders will appear here.</EmptyNote>
         ) : (
           <div className="space-y-2.5">
             {data.map((v) => (
@@ -586,35 +645,33 @@ function NotificationsBody() {
   return (
     <SectionBody query={query}>
       {items.length === 0 ? (
-        <p className="py-1 text-sm font-semibold text-navy-soft">Nothing here yet.</p>
+        <EmptyNote>Nothing here yet.</EmptyNote>
       ) : (
         <div className="space-y-2.5">
           {items.map((n) => (
-            <div
+            <Tile
               key={String(n.id)}
-              className={cn(
-                "rounded-2xl p-3",
-                n.read ? "bg-[#f6f8fa]" : "bg-brand-soft/50"
-              )}
+              className={cn(n.read ? "bg-[#f6f8fa]" : "bg-brand-soft/50")}
             >
               <p className="text-sm font-extrabold text-navy">{n.title}</p>
               <p className="mt-0.5 text-sm font-medium text-navy/80">{n.body}</p>
               <p className="mt-1 text-[11px] font-semibold text-navy-soft">
                 {formatDate(n.created_at)}
               </p>
-            </div>
+            </Tile>
           ))}
           {hasNextPage && (
-            <button
-              type="button"
+            <Button
+              variant="secondary"
+              size="pill"
+              className="h-9 w-full bg-[#f1f4f8] text-sm font-bold text-navy"
               disabled={isFetchingNextPage}
               onClick={() => void fetchNextPage()}
-              className="w-full rounded-full bg-[#f1f4f8] py-2 text-sm font-bold text-navy disabled:opacity-50"
             >
               {isFetchingNextPage
                 ? "Loading…"
                 : `Load more (${pagination.current}/${pagination.total})`}
-            </button>
+            </Button>
           )}
         </div>
       )}
@@ -640,11 +697,7 @@ function PushBody() {
   const [last, setLast] = useState<"enable" | "disable" | null>(null)
 
   if (!supported) {
-    return (
-      <p className="py-1 text-sm font-semibold text-navy-soft">
-        This browser doesn't support push notifications.
-      </p>
-    )
+    return <EmptyNote>This browser doesn't support push notifications.</EmptyNote>
   }
 
   // live browser value — every mutation settling re-renders this component
@@ -699,15 +752,16 @@ function PushBody() {
       <p className="text-sm font-medium text-navy-soft">
         Get order status alerts on this device, even with the tab closed.
       </p>
-      <button
-        type="button"
+      <Button
+        variant="brand"
+        size="pill"
+        className="mt-3 h-10 w-full text-sm"
         onClick={toggle}
         disabled={busy || permission === "denied"}
-        className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-brand py-2.5 text-sm font-extrabold text-white disabled:opacity-50"
       >
         {busy && <Spinner />}
         {subscription ? "Turn off notifications" : "Turn on notifications"}
-      </button>
+      </Button>
       {permission === "denied" && (
         <p className="mt-2 text-xs font-semibold text-navy-soft">
           Blocked for this site — re-enable it in the browser's site settings to
@@ -715,14 +769,19 @@ function PushBody() {
         </p>
       )}
       {status && (
-        <p
+        <Alert
+          variant={status.ok ? "default" : "destructive"}
           className={cn(
-            "mt-2 text-xs font-semibold",
+            "mt-2 border-0 bg-transparent px-0 py-1",
             status.ok ? "text-mint-deep" : "text-pink"
           )}
         >
-          {status.text}
-        </p>
+          <AlertDescription
+            className={cn("text-xs font-semibold", status.ok ? "text-mint-deep" : "text-pink")}
+          >
+            {status.text}
+          </AlertDescription>
+        </Alert>
       )}
     </>
   )
@@ -736,20 +795,20 @@ function SessionsBody() {
       {data && (
         <div className="space-y-2.5">
           {data.map((s) => (
-            <div key={s.id} className="rounded-2xl bg-[#f6f8fa] p-3">
+            <Tile key={s.id} className="bg-[#f6f8fa]">
               <p className="flex items-center gap-2 text-sm font-extrabold text-navy">
                 {s.device_name || "Unknown device"}
                 {s.current && (
-                  <span className="rounded-full bg-mint/20 px-2 py-0.5 text-[10px] font-extrabold tracking-wider text-mint-deep uppercase">
+                  <Badge className="rounded-full bg-mint/20 px-2 py-0.5 text-[10px] font-extrabold tracking-wider text-mint-deep uppercase hover:bg-mint/20">
                     This device
-                  </span>
+                  </Badge>
                 )}
               </p>
               <p className="mt-0.5 text-xs font-semibold text-navy-soft">
                 {s.ip ?? "—"} · created {formatDate(s.created_at)}
                 {s.last_used_at ? ` · last used ${formatDate(s.last_used_at)}` : ""}
               </p>
-            </div>
+            </Tile>
           ))}
         </div>
       )}
@@ -774,25 +833,25 @@ function ConsentsBody() {
       {data && (
         <>
           {data.length === 0 ? (
-            <p className="py-1 text-sm font-semibold text-navy-soft">
-              No partner apps have access to your full order history.
-            </p>
+            <EmptyNote>No partner apps have access to your full order history.</EmptyNote>
           ) : (
             <div className="space-y-2">
               {data.map((c) => (
-                <div
+                <Tile
                   key={String(c.partner_id)}
-                  className="rounded-2xl bg-[#f6f8fa] p-3 text-sm font-semibold text-navy"
+                  className="bg-[#f6f8fa] text-sm font-semibold text-navy"
                 >
                   Partner #{String(c.partner_id)} · {c.scope} · granted{" "}
                   {formatDate(c.granted_at)}
-                </div>
+                </Tile>
               ))}
             </div>
           )}
           <div className="mt-3 flex gap-2.5">
-            <button
-              type="button"
+            <Button
+              variant="brand"
+              size="pill"
+              className="h-10 flex-1 text-sm"
               disabled={busy !== null}
               onClick={() =>
                 grant.mutate(undefined, {
@@ -801,12 +860,13 @@ function ConsentsBody() {
                   onError: (e) => toast.error(apiErrorMessage(e)),
                 })
               }
-              className="flex flex-1 items-center justify-center gap-2 rounded-full bg-brand py-2.5 text-sm font-extrabold text-white disabled:opacity-50"
             >
               {busy === "grant" && <Spinner className="text-white" />} Grant
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="outline"
+              size="pill"
+              className="h-10 flex-1 border-2 border-pink bg-transparent text-sm text-pink hover:bg-pink/5 hover:text-pink"
               disabled={busy !== null}
               onClick={() =>
                 revoke.mutate(undefined, {
@@ -814,10 +874,9 @@ function ConsentsBody() {
                   onError: (e) => toast.error(apiErrorMessage(e)),
                 })
               }
-              className="flex flex-1 items-center justify-center gap-2 rounded-full border-2 border-pink py-2.5 text-sm font-extrabold text-pink disabled:opacity-50"
             >
               {busy === "revoke" && <Spinner />} Revoke
-            </button>
+            </Button>
           </div>
           <p className="mt-2 text-xs font-medium text-navy-soft">
             Granting lets this app's partner read your whole order history
@@ -843,24 +902,26 @@ function SignOutButtons() {
 
   return (
     <div className="flex gap-3">
-      <button
-        type="button"
+      <Button
+        variant="glass"
+        size="xl"
+        className="h-13 flex-1 text-[15px] tracking-normal normal-case disabled:opacity-60"
         disabled={busy !== null}
         onClick={() => signOut.mutate("one")}
-        className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-white/20 py-3.5 text-[15px] font-extrabold text-white transition active:scale-[0.98] disabled:opacity-60"
       >
         {busy === "one" ? <Spinner className="text-white" /> : <LogOut className="size-4" />}
         Sign out
-      </button>
-      <button
-        type="button"
+      </Button>
+      <Button
+        variant="glass"
+        size="xl"
+        className="h-13 flex-1 text-[15px] tracking-normal normal-case disabled:opacity-60"
         disabled={busy !== null}
         onClick={() => signOut.mutate("all")}
-        className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-white/20 py-3.5 text-[15px] font-extrabold text-white transition active:scale-[0.98] disabled:opacity-60"
       >
         {busy === "all" ? <Spinner className="text-white" /> : <LogOut className="size-4" />}
         Sign out everywhere
-      </button>
+      </Button>
     </div>
   )
 }

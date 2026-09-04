@@ -9,10 +9,27 @@ import {
   CalendarDays,
 } from "lucide-react"
 import { toast } from "sonner"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
+import { Card, CardContent } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer"
+import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Spinner } from "@/components/ui/spinner"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { DoneScreen, PaymentModal } from "@/components/order/PaymentDrawer"
 import { productBadge, tileColor } from "@/components/vignettes/ProductCard"
-import { Checkbox } from "@/components/ui/checkbox"
 import {
   COUNTRY_NAMES,
   Flag,
@@ -59,6 +76,17 @@ interface OrderSheetProps {
   onSwitchCountry?: (country: string) => void
 }
 
+const toDate = (unixSeconds: number) => new Date(unixSeconds * 1000)
+const dayStartOf = (date: Date) => {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  return Math.floor(d.getTime() / 1000)
+}
+
+/** the light form field look used across the sheet's white cards */
+const FIELD =
+  "h-auto w-full rounded-xl border-0 bg-[#f1f4f8] px-3.5 py-3 text-[15px] font-semibold text-navy shadow-none placeholder:text-navy-soft md:text-[15px]"
+
 export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderSheetProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -75,6 +103,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   const [vinOpen, setVinOpen] = useState(false)
   const [period, setPeriod] = useState<string | null>(null)
   const [startDate, setStartDate] = useState<number>(dayStart(0))
+  const [dateOpen, setDateOpen] = useState(false)
   const [email, setEmail] = useState("")
   const [flexEnabled, setFlexEnabled] = useState(true)
   const [flexType, setFlexType] = useState<"default" | "expanded">("default")
@@ -309,24 +338,25 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                 <ProductSummary product={product} />
 
                 {/* plate + vin */}
-                <div className="mt-3 rounded-[24px] bg-white p-4">
-                  <div className="flex items-center gap-2.5">
-                    <label className="relative flex shrink-0 cursor-pointer items-center gap-1.5 rounded-xl bg-[#f1f4f8] px-2.5 py-3">
-                      <Flag code={plateCountry} className="h-6 w-9 rounded-md" />
-                      <ChevronDown className="size-5 text-navy-soft" />
-                      <select
+                <Card className="mt-3 rounded-[24px] ring-0">
+                  <CardContent className="flex items-center gap-2.5">
+                    <Select value={plateCountry} onValueChange={setPlateCountry}>
+                      <SelectTrigger
                         aria-label="Plate country"
-                        value={plateCountry}
-                        onChange={(e) => setPlateCountry(e.target.value)}
-                        className="absolute inset-0 cursor-pointer opacity-0"
+                        // the trigger base pins un-sized inner svgs to 16px — let the flag fill its box
+                        className="h-auto shrink-0 gap-1.5 rounded-xl border-0 bg-[#f1f4f8] px-2.5 py-3 shadow-none [&>svg]:size-5 [&>svg]:text-navy-soft [&_span_svg]:size-full"
                       >
+                        <Flag code={plateCountry} className="h-6 w-9 rounded-md" />
+                      </SelectTrigger>
+                      <SelectContent>
                         {PLATE_COUNTRIES.map((c) => (
-                          <option key={c} value={c}>
+                          <SelectItem key={c} value={c} className="[&_span_svg]:size-full">
+                            <Flag code={c} className="h-3.5 w-5 rounded-[2px]" />
                             {COUNTRY_NAMES[c]}
-                          </option>
+                          </SelectItem>
                         ))}
-                      </select>
-                    </label>
+                      </SelectContent>
+                    </Select>
 
                     <div className="flex-1 overflow-hidden rounded-xl">
                       <div className="flex items-stretch bg-[#ECEFF3]">
@@ -336,202 +366,220 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                             {plateCountry.toUpperCase()}
                           </span>
                         </span>
-                        <input
+                        <Input
                           value={plate}
                           onChange={(e) => setPlate(e.target.value.toUpperCase())}
                           placeholder="REGISTRATION PLATE"
-                          className="min-h-14 min-w-0 flex-1 bg-transparent px-3 text-center text-[26px] font-extrabold tracking-[0.2em] text-navy uppercase outline-none placeholder:text-[13px] placeholder:font-semibold placeholder:tracking-widest placeholder:text-navy-soft"
+                          aria-label="Registration plate"
+                          className="h-auto min-h-14 min-w-0 flex-1 rounded-none border-0 bg-transparent px-3 text-center text-[26px] font-extrabold tracking-[0.2em] text-navy uppercase shadow-none placeholder:text-[13px] placeholder:font-semibold placeholder:tracking-widest placeholder:text-navy-soft focus-visible:ring-0 md:text-[26px]"
                         />
                       </div>
                       {vinRequired &&
                         (vinOpen ? (
-                          <input
+                          <Input
                             autoFocus
                             value={vin}
                             onChange={(e) => setVin(e.target.value.toUpperCase())}
                             onBlur={() => !vin && setVinOpen(false)}
                             placeholder="VIN CODE"
-                            className="w-full bg-brand px-3 py-2 text-center text-sm font-bold tracking-[0.15em] text-white uppercase outline-none placeholder:text-white/70"
+                            aria-label="VIN code"
+                            className="h-auto w-full rounded-none border-0 bg-brand px-3 py-2 text-center text-sm font-bold tracking-[0.15em] text-white uppercase shadow-none placeholder:text-white/70 focus-visible:ring-0 md:text-sm"
                           />
                         ) : (
-                          <button
-                            type="button"
+                          <Button
+                            variant="brand"
                             onClick={() => setVinOpen(true)}
-                            className="w-full bg-brand px-3 py-2 text-center text-sm font-semibold text-white"
+                            className="h-auto w-full rounded-none py-2 text-sm font-semibold active:scale-100"
                           >
                             {vin || "Type vin-code (required)"}
-                          </button>
+                          </Button>
                         ))}
                     </div>
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
 
                 {/* period picker */}
-                <div className="no-scrollbar -mx-4 mt-3 flex gap-3 overflow-x-auto px-4">
-                  {periods.map((p) => {
-                    const selected = p === period
-                    return (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => setPeriod(p)}
-                        className={cn(
-                          "flex shrink-0 items-center gap-3 rounded-[22px] px-4 py-3.5 transition",
-                          selected ? "bg-white shadow-lg" : "bg-[#cbe7ff]"
-                        )}
-                      >
-                        <span className="relative">
-                          <CalendarChip days={p} />
-                          {selected && (
-                            <span className="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full bg-mint ring-2 ring-white">
-                              <Check className="size-3 text-white" strokeWidth={3.5} />
-                            </span>
-                          )}
-                        </span>
-                        <span className="text-lg font-extrabold text-navy">
-                          {product.price[p].total_price} €
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
+                <ScrollArea className="-mx-4 mt-3">
+                  <ToggleGroup
+                    type="single"
+                    value={period ?? ""}
+                    onValueChange={(p) => p && setPeriod(p)}
+                    spacing={3}
+                    aria-label="Validity period"
+                    className="w-max px-4 pb-2"
+                  >
+                    {periods.map((p) => {
+                      const selected = p === period
+                      return (
+                        <ToggleGroupItem
+                          key={p}
+                          value={p}
+                          className="h-auto min-w-0 shrink-0 gap-3 rounded-[22px] bg-[#cbe7ff] px-4 py-3.5 hover:bg-[#cbe7ff] data-[state=on]:bg-white data-[state=on]:shadow-lg"
+                        >
+                          <span className="relative">
+                            <CalendarChip days={p} />
+                            {selected && (
+                              <span className="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full bg-mint ring-2 ring-white">
+                                <Check className="size-3 text-white" strokeWidth={3.5} />
+                              </span>
+                            )}
+                          </span>
+                          <span className="text-lg font-extrabold text-navy">
+                            {product.price[p].total_price} €
+                          </span>
+                        </ToggleGroupItem>
+                      )
+                    })}
+                  </ToggleGroup>
+                  <ScrollBar orientation="horizontal" className="invisible" />
+                </ScrollArea>
 
                 {/* valid period from */}
-                <div className="mt-3 rounded-[24px] bg-white p-4">
-                  <p className="text-lg font-extrabold tracking-wide text-navy uppercase">
-                    Valid period from
-                  </p>
-                  <label className="relative mt-3 flex cursor-pointer items-center justify-between rounded-xl bg-[#f1f4f8] px-3.5 py-3.5">
-                    <span className="flex items-center gap-2.5 text-[17px] font-semibold text-navy">
-                      <CalendarDays className="size-5" />
-                      {formatDate(startDate)} — {formatDate(endDate)}
-                    </span>
-                    <ChevronDown className="size-5 text-navy" />
-                    <input
-                      type="date"
-                      aria-label="Start date"
-                      min={toDateInput(dayStart(fromTomorrowOnly ? 1 : 0))}
-                      value={toDateInput(startDate)}
-                      onChange={(e) => {
-                        if (!e.target.value) return
-                        const [y, m, d] = e.target.value.split("-").map(Number)
-                        const picked = new Date(y, m - 1, d)
-                        picked.setHours(0, 0, 0, 0)
-                        setStartDate(Math.floor(picked.getTime() / 1000))
+                <Card className="mt-3 rounded-[24px] ring-0">
+                  <CardContent>
+                    <p className="text-lg font-extrabold tracking-wide text-navy uppercase">
+                      Valid period from
+                    </p>
+                    <Popover open={dateOpen} onOpenChange={setDateOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="secondary"
+                          className="mt-3 h-auto w-full justify-between rounded-xl bg-[#f1f4f8] px-3.5 py-3.5 text-[17px] font-semibold text-navy hover:bg-[#e8edf3]"
+                        >
+                          <span className="flex items-center gap-2.5">
+                            <CalendarDays className="size-5" />
+                            {formatDate(startDate)} — {formatDate(endDate)}
+                          </span>
+                          <ChevronDown className="size-5" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={toDate(startDate)}
+                          defaultMonth={toDate(startDate)}
+                          disabled={{ before: toDate(dayStart(fromTomorrowOnly ? 1 : 0)) }}
+                          onSelect={(picked) => {
+                            if (!picked) return
+                            setStartDate(dayStartOf(picked))
+                            setDateOpen(false)
+                          }}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    <ToggleGroup
+                      type="single"
+                      value={isToday ? "today" : isTomorrow ? "tomorrow" : ""}
+                      onValueChange={(v) => {
+                        if (v === "today") setStartDate(dayStart(0))
+                        if (v === "tomorrow") setStartDate(dayStart(1))
                       }}
-                      className="absolute inset-0 cursor-pointer opacity-0"
-                    />
-                  </label>
-                  <div className="mt-3 flex gap-3">
-                    <button
-                      type="button"
-                      disabled={fromTomorrowOnly}
-                      onClick={() => setStartDate(dayStart(0))}
-                      className={cn(
-                        "flex-1 rounded-full py-3 text-[15px] font-extrabold tracking-wider uppercase transition disabled:opacity-40",
-                        isToday
-                          ? "bg-[#3a3f47] text-white"
-                          : "border-2 border-[#3a3f47] text-navy"
-                      )}
+                      spacing={3}
+                      aria-label="Quick start date"
+                      className="mt-3 w-full"
                     >
-                      Today
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setStartDate(dayStart(1))}
-                      className={cn(
-                        "flex-1 rounded-full py-3 text-[15px] font-extrabold tracking-wider uppercase transition",
-                        isTomorrow
-                          ? "bg-[#3a3f47] text-white"
-                          : "border-2 border-[#3a3f47] text-navy"
-                      )}
-                    >
-                      Tomorrow
-                    </button>
-                  </div>
-                </div>
+                      <ToggleGroupItem
+                        value="today"
+                        disabled={fromTomorrowOnly}
+                        className={QUICK_DATE}
+                      >
+                        Today
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="tomorrow" className={QUICK_DATE}>
+                        Tomorrow
+                      </ToggleGroupItem>
+                    </ToggleGroup>
+                  </CardContent>
+                </Card>
 
                 {/* driver info — required by some products (e.g. Moldova) */}
                 {driverInfoRequired && (
-                  <div className="mt-3 space-y-2.5 rounded-[24px] bg-white p-4">
-                    <p className="text-lg font-extrabold tracking-wide text-navy uppercase">
-                      Driver details
-                    </p>
-                    <input
-                      value={driver.user_name}
-                      onChange={(e) =>
-                        setDriver((d) => ({ ...d, user_name: e.target.value }))
-                      }
-                      placeholder="Full name"
-                      className="w-full rounded-xl bg-[#f1f4f8] px-3.5 py-3 text-[15px] font-semibold text-navy outline-none placeholder:text-navy-soft"
-                    />
-                    <input
-                      value={driver.passport_number}
-                      onChange={(e) =>
-                        setDriver((d) => ({ ...d, passport_number: e.target.value }))
-                      }
-                      placeholder="Passport number"
-                      className="w-full rounded-xl bg-[#f1f4f8] px-3.5 py-3 text-[15px] font-semibold text-navy outline-none placeholder:text-navy-soft"
-                    />
-                    <label className="flex items-center gap-2.5 rounded-xl bg-[#f1f4f8] px-3.5 py-3">
-                      <span className="text-[15px] font-semibold text-navy-soft">
-                        Passport country
-                      </span>
-                      <select
-                        value={driver.passport_country}
+                  <Card className="mt-3 rounded-[24px] ring-0">
+                    <CardContent className="space-y-2.5">
+                      <p className="text-lg font-extrabold tracking-wide text-navy uppercase">
+                        Driver details
+                      </p>
+                      <Input
+                        value={driver.user_name}
                         onChange={(e) =>
-                          setDriver((d) => ({
-                            ...d,
-                            passport_country: e.target.value,
-                          }))
+                          setDriver((d) => ({ ...d, user_name: e.target.value }))
                         }
-                        className="flex-1 bg-transparent text-right text-[15px] font-semibold text-navy outline-none"
+                        placeholder="Full name"
+                        aria-label="Full name"
+                        className={FIELD}
+                      />
+                      <Input
+                        value={driver.passport_number}
+                        onChange={(e) =>
+                          setDriver((d) => ({ ...d, passport_number: e.target.value }))
+                        }
+                        placeholder="Passport number"
+                        aria-label="Passport number"
+                        className={FIELD}
+                      />
+                      <Select
+                        value={driver.passport_country}
+                        onValueChange={(v) =>
+                          setDriver((d) => ({ ...d, passport_country: v }))
+                        }
                       >
-                        {Object.entries(COUNTRY_NAMES).map(([code, name]) => (
-                          <option key={code} value={code}>
-                            {name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
+                        <SelectTrigger
+                          aria-label="Passport country"
+                          className={cn(FIELD, "justify-between")}
+                        >
+                          <span className="text-navy-soft">Passport country</span>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(COUNTRY_NAMES).map(([code, name]) => (
+                            <SelectItem key={code} value={code}>
+                              {name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </CardContent>
+                  </Card>
                 )}
 
                 {/* email + price breakdown + flex */}
-                <div className="mt-3 rounded-[24px] bg-brand-deep/60 p-4">
-                  <input
-                    type="email"
-                    value={email}
-                    readOnly={!isGuest}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Email"
-                    className={cn(
-                      "w-full rounded-2xl bg-brand-tint/70 px-4 py-3.5 text-center text-lg font-semibold text-white outline-none placeholder:text-white/70",
-                      !isGuest && "cursor-default"
+                <Card className="mt-3 rounded-[24px] bg-brand-deep/60 text-white ring-0">
+                  <CardContent>
+                    <Input
+                      type="email"
+                      value={email}
+                      readOnly={!isGuest}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="Email"
+                      aria-label="Email"
+                      className={cn(
+                        "h-auto w-full rounded-2xl border-0 bg-brand-tint/70 px-4 py-3.5 text-center text-lg font-semibold text-white shadow-none placeholder:text-white/70 focus-visible:ring-white/40 md:text-lg",
+                        !isGuest && "cursor-default"
+                      )}
+                    />
+                    {selectedPrice && (
+                      <div className="mt-4 space-y-2.5 px-1">
+                        <PriceRow
+                          label="Official Vignette"
+                          value={`${selectedPrice.government_price} €`}
+                        />
+                        <PriceRow
+                          label="Vignette Online Identification + VAT"
+                          value={`${servicePrice} €`}
+                        />
+                      </div>
                     )}
-                  />
-                  {selectedPrice && (
-                    <div className="mt-4 space-y-2.5 px-1">
-                      <PriceRow
-                        label="Official Vignette"
-                        value={`${selectedPrice.government_price} €`}
-                      />
-                      <PriceRow
-                        label="Vignette Online Identification + VAT"
-                        value={`${servicePrice} €`}
-                      />
-                    </div>
-                  )}
-                  <FlexPanel
-                    enabled={flexEnabled}
-                    onEnabled={setFlexEnabled}
-                    type={flexType}
-                    onType={setFlexType}
-                    defaultPrice={flexOptions.find((f) => f.type === "default")?.price ?? 2.99}
-                    expandedPrice={flexOptions.find((f) => f.type === "expanded")?.price ?? 5.98}
-                    showBadges
-                  />
-                </div>
+                    <FlexPanel
+                      enabled={flexEnabled}
+                      onEnabled={setFlexEnabled}
+                      type={flexType}
+                      onType={setFlexType}
+                      defaultPrice={flexOptions.find((f) => f.type === "default")?.price ?? 2.99}
+                      expandedPrice={flexOptions.find((f) => f.type === "expanded")?.price ?? 5.98}
+                      showBadges
+                    />
+                  </CardContent>
+                </Card>
 
                 {fromTomorrowOnly && (
                   <p className="mt-3 px-1 text-center text-sm font-semibold text-white/90">
@@ -539,20 +587,23 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                   </p>
                 )}
                 {mdOnMd && (
-                  <p className="mt-3 rounded-2xl bg-pink/90 px-4 py-3 text-sm font-bold text-white">
-                    A Moldovan vignette is not required for a Moldovan vehicle
-                    plate — pick a different plate country.
-                  </p>
+                  <Alert className="mt-3 rounded-2xl border-0 bg-pink/90 text-white">
+                    <AlertDescription className="font-bold text-white">
+                      A Moldovan vignette is not required for a Moldovan vehicle plate —
+                      pick a different plate country.
+                    </AlertDescription>
+                  </Alert>
                 )}
 
-                <button
-                  type="button"
+                <Button
+                  variant="mint"
+                  size="xl"
+                  className="mt-4 w-full"
                   disabled={!canProceed || mdOnMd}
                   onClick={() => setStep("confirm")}
-                  className="mt-4 w-full rounded-2xl bg-mint py-4 text-xl font-extrabold tracking-[0.25em] text-white uppercase shadow-[0_10px_24px_rgba(47,199,141,0.4)] transition active:scale-[0.98] disabled:opacity-50"
                 >
                   Next
-                </button>
+                </Button>
               </>
             ) : (
               <>
@@ -562,61 +613,66 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                 </p>
 
                 {/* Important! plate recap */}
-                <div className="mt-4 rounded-[24px] bg-white p-4">
-                  <p className="text-lg font-extrabold text-pink">Important!</p>
-                  <div className="relative mt-2">
-                    <div className="overflow-hidden rounded-xl">
-                      <div className="flex items-stretch overflow-hidden bg-[#ECEFF3]">
-                        <span className="flex w-14 shrink-0 flex-col items-center justify-center gap-1 bg-[#173A7A] py-3">
-                          <Flag code={plateCountry} className="h-4 w-6 rounded-[2px]" />
-                          <span className="text-[10px] leading-none font-bold text-white">
-                            {plateCountry.toUpperCase()}
+                <Card className="mt-4 rounded-[24px] ring-0">
+                  <CardContent>
+                    <p className="text-lg font-extrabold text-pink">Important!</p>
+                    <div className="relative mt-2">
+                      <div className="overflow-hidden rounded-xl">
+                        <div className="flex items-stretch overflow-hidden bg-[#ECEFF3]">
+                          <span className="flex w-14 shrink-0 flex-col items-center justify-center gap-1 bg-[#173A7A] py-3">
+                            <Flag code={plateCountry} className="h-4 w-6 rounded-[2px]" />
+                            <span className="text-[10px] leading-none font-bold text-white">
+                              {plateCountry.toUpperCase()}
+                            </span>
                           </span>
-                        </span>
-                        <span className="flex min-h-14 flex-1 items-center justify-center px-3 text-[26px] font-extrabold tracking-[0.2em] text-navy uppercase">
-                          {plate}
-                        </span>
-                      </div>
-                      {vin && (
-                        <div className="bg-brand px-3 py-2 text-center text-sm font-bold tracking-[0.12em] text-white uppercase">
-                          {vin}
+                          <span className="flex min-h-14 flex-1 items-center justify-center px-3 text-[26px] font-extrabold tracking-[0.2em] text-navy uppercase">
+                            {plate}
+                          </span>
                         </div>
-                      )}
+                        {vin && (
+                          <div className="bg-brand px-3 py-2 text-center text-sm font-bold tracking-[0.12em] text-white uppercase">
+                            {vin}
+                          </div>
+                        )}
+                      </div>
+                      <Button
+                        variant="brand"
+                        size="icon-lg"
+                        onClick={() => setStep("order")}
+                        aria-label="Edit plate"
+                        className="absolute -top-2 -right-2 rounded-full shadow-md"
+                      >
+                        <Pencil className="size-4" />
+                      </Button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setStep("order")}
-                      aria-label="Edit plate"
-                      className="absolute -top-2 -right-2 flex size-9 items-center justify-center rounded-full bg-brand text-white shadow-md"
-                    >
-                      <Pencil className="size-4" />
-                    </button>
-                  </div>
-                  <p className="mt-3 text-[15px] font-semibold text-navy">
-                    The e-vignette below is for this plate.
-                  </p>
-                </div>
+                    <p className="mt-3 text-[15px] font-semibold text-navy">
+                      The e-vignette below is for this plate.
+                    </p>
+                  </CardContent>
+                </Card>
 
                 {/* order summary */}
-                <div className="mt-3 flex items-center gap-2.5 rounded-[24px] bg-white p-4">
-                  <FlagRect
-                    code={product.country}
-                    className="h-8 w-11 shrink-0 rounded-lg"
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[17px] font-extrabold text-navy">
-                      {COUNTRY_NAMES[product.country]}
+                <Card className="mt-3 rounded-[24px] ring-0">
+                  <CardContent className="flex items-center gap-2.5">
+                    <FlagRect
+                      code={product.country}
+                      className="h-8 w-11 shrink-0 rounded-lg"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[17px] font-extrabold text-navy">
+                        {COUNTRY_NAMES[product.country]}
+                      </span>
+                      <span className="block truncate text-[13px] font-semibold whitespace-nowrap text-navy-soft">
+                        {periodLabel(period!)} · {formatDayMonth(startDate)} —{" "}
+                        {formatDayMonth(endDate)}
+                      </span>
                     </span>
-                    <span className="block truncate text-[13px] font-semibold whitespace-nowrap text-navy-soft">
-                      {periodLabel(period!)} · {formatDayMonth(startDate)} —{" "}
-                      {formatDayMonth(endDate)}
+                    <span className="shrink-0 text-[17px] font-extrabold whitespace-nowrap text-navy">
+                      {selectedPrice?.total_price} €
                     </span>
-                  </span>
-                  <span className="shrink-0 text-[17px] font-extrabold whitespace-nowrap text-navy">
-                    {selectedPrice?.total_price} €
-                  </span>
-                  <ChevronDown className="size-5 shrink-0 text-navy-soft" />
-                </div>
+                    <ChevronDown className="size-5 shrink-0 text-navy-soft" />
+                  </CardContent>
+                </Card>
 
                 {/* add other e-vignettes */}
                 {onSwitchCountry && (
@@ -624,95 +680,100 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                     <p className="mt-5 text-center text-[15px] font-extrabold tracking-wide text-white uppercase">
                       Add other e-vignettes in one click
                     </p>
-                    <div className="no-scrollbar -mx-4 mt-3 flex gap-4 overflow-x-auto px-6">
-                      {countries
-                        .filter((c) => c !== product.country)
-                        .map((c) => (
-                          <button
-                            key={c}
-                            type="button"
-                            onClick={() => onSwitchCountry(c)}
-                            className="flex shrink-0 flex-col items-center gap-1.5"
-                          >
-                            <span className="relative">
-                              <FlagCircle code={c} className="size-16" />
-                              <span className="absolute -right-0.5 bottom-0 flex size-5 items-center justify-center rounded-full bg-pink text-sm font-bold text-white ring-2 ring-white">
-                                +
+                    <ScrollArea className="-mx-4 mt-3">
+                      <div className="flex w-max gap-4 px-6 pb-2">
+                        {countries
+                          .filter((c) => c !== product.country)
+                          .map((c) => (
+                            <Button
+                              key={c}
+                              variant="ghost"
+                              onClick={() => onSwitchCountry(c)}
+                              className="h-auto shrink-0 flex-col gap-1.5 p-0 hover:bg-transparent [&_svg:not([class*='size-'])]:size-full"
+                            >
+                              <span className="relative">
+                                <FlagCircle code={c} className="size-16" />
+                                <Badge className="absolute -right-0.5 bottom-0 size-5 justify-center rounded-full bg-pink p-0 text-sm font-bold text-white ring-2 ring-white">
+                                  +
+                                </Badge>
                               </span>
-                            </span>
-                            <span className="max-w-16 truncate text-[13px] font-bold text-white">
-                              {COUNTRY_NAMES[c]}
-                            </span>
-                          </button>
-                        ))}
-                    </div>
+                              <span className="max-w-16 truncate text-[13px] font-bold text-white">
+                                {COUNTRY_NAMES[c]}
+                              </span>
+                            </Button>
+                          ))}
+                      </div>
+                      <ScrollBar orientation="horizontal" className="invisible" />
+                    </ScrollArea>
                   </>
                 )}
 
-                <div className="mt-4 rounded-[24px] bg-brand-deep/60 p-4">
-                  <FlexPanel
-                    enabled={flexEnabled}
-                    onEnabled={setFlexEnabled}
-                    type={flexType}
-                    onType={setFlexType}
-                    defaultPrice={flexOptions.find((f) => f.type === "default")?.price ?? 2.99}
-                    expandedPrice={flexOptions.find((f) => f.type === "expanded")?.price ?? 5.98}
-                    showBadges
-                  />
-                  <label className="mt-4 flex cursor-pointer items-start gap-3 px-1">
-                    <Checkbox
-                      checked={terms}
-                      onCheckedChange={(v) => setTerms(v === true)}
-                      className="mt-0.5 size-6 shrink-0 rounded-md border-2 border-white/80 bg-white/15 data-checked:border-white data-checked:bg-white data-checked:text-brand"
+                <Card className="mt-4 rounded-[24px] bg-brand-deep/60 text-white ring-0">
+                  <CardContent>
+                    <FlexPanel
+                      enabled={flexEnabled}
+                      onEnabled={setFlexEnabled}
+                      type={flexType}
+                      onType={setFlexType}
+                      defaultPrice={flexOptions.find((f) => f.type === "default")?.price ?? 2.99}
+                      expandedPrice={flexOptions.find((f) => f.type === "expanded")?.price ?? 5.98}
+                      showBadges
                     />
-                    <span className="text-[15px] leading-snug font-semibold text-white">
-                      By clicking on pay I agree with the{" "}
-                      <a
-                        href="https://vignette.id/legal/terms"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="underline"
-                      >
-                        terms and conditions
-                      </a>{" "}
-                      and the{" "}
-                      <a
-                        href="https://vignette.id/legal/privacy"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="underline"
-                      >
-                        privacy policy
-                      </a>
-                    </span>
-                  </label>
-                </div>
+                    <label className="mt-4 flex cursor-pointer items-start gap-3 px-1">
+                      <Checkbox
+                        checked={terms}
+                        onCheckedChange={(v) => setTerms(v === true)}
+                        className="mt-0.5 size-6 shrink-0 rounded-md border-2 border-white/80 bg-white/15 data-checked:border-white data-checked:bg-white data-checked:text-brand"
+                      />
+                      <span className="text-[15px] leading-snug font-semibold text-white">
+                        By clicking on pay I agree with the{" "}
+                        <a
+                          href="https://vignette.id/legal/terms"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline"
+                        >
+                          terms and conditions
+                        </a>{" "}
+                        and the{" "}
+                        <a
+                          href="https://vignette.id/legal/privacy"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline"
+                        >
+                          privacy policy
+                        </a>
+                      </span>
+                    </label>
+                  </CardContent>
+                </Card>
 
-                <div className="mt-4 rounded-[24px] bg-pink p-4">
-                  <p className="text-[17px] leading-snug font-extrabold text-white">
+                <Alert className="mt-4 rounded-[24px] border-0 bg-pink text-white">
+                  <AlertDescription className="text-[17px] leading-snug font-extrabold text-white">
                     You are fully responsible for all data errors. After payment
                     the data cannot be changed and the refund is not provided
                     according to government rules!
-                  </p>
-                </div>
+                  </AlertDescription>
+                </Alert>
 
                 {duplicateWarning && (
-                  <div className="mt-4 rounded-[24px] bg-white p-4">
-                    <p className="text-[15px] font-bold text-navy">
+                  <Alert className="mt-4 rounded-[24px] border-0 bg-white text-navy">
+                    <AlertTitle className="line-clamp-none text-[15px] font-bold whitespace-normal">
                       {duplicateWarning}
-                    </p>
-                    <p className="mt-1 text-sm font-medium text-navy-soft">
-                      You can still place this order if you're sure it's not a
-                      duplicate.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => submit({ allowDuplication: true })}
-                      className="mt-3 w-full rounded-full border-2 border-pink py-2.5 text-[15px] font-extrabold tracking-wider text-pink uppercase"
-                    >
-                      Buy anyway
-                    </button>
-                  </div>
+                    </AlertTitle>
+                    <AlertDescription className="text-navy-soft">
+                      <p>You can still place this order if you're sure it's not a duplicate.</p>
+                      <Button
+                        variant="outline"
+                        size="pill"
+                        onClick={() => submit({ allowDuplication: true })}
+                        className="mt-3 w-full border-2 border-pink bg-transparent text-pink uppercase tracking-wider hover:bg-pink/5 hover:text-pink"
+                      >
+                        Buy anyway
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
                 )}
 
                 <div className="mt-5 flex items-end justify-between px-1">
@@ -722,14 +783,15 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                   <span className="text-3xl font-extrabold text-white">{total} €</span>
                 </div>
 
-                <button
-                  type="button"
+                <Button
+                  variant="mint"
+                  size="xl"
+                  className="mt-3 w-full disabled:opacity-60"
                   disabled={!terms}
                   onClick={() => submit()}
-                  className="mt-3 w-full rounded-2xl bg-mint py-4 text-xl font-extrabold tracking-[0.25em] text-white uppercase shadow-[0_10px_24px_rgba(47,199,141,0.4)] transition active:scale-[0.98] disabled:opacity-60"
                 >
                   Pay
-                </button>
+                </Button>
               </>
             )}
           </div>
@@ -740,6 +802,10 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
 }
 
 /* --------------------------------------------------------- subcomponents */
+
+/** TODAY / TOMORROW quick picks — outlined pill, filled dark when active */
+const QUICK_DATE =
+  "h-12 min-w-0 flex-1 rounded-full border-2 border-[#3a3f47] bg-transparent text-[15px] font-extrabold tracking-wider text-navy uppercase hover:bg-transparent data-[state=on]:border-[#3a3f47] data-[state=on]:bg-[#3a3f47] data-[state=on]:text-white disabled:opacity-40"
 
 function StepIndicator({ step }: { step: "order" | "confirm" }) {
   return (
@@ -783,17 +849,17 @@ function StepIndicator({ step }: { step: "order" | "confirm" }) {
 function ProductSummary({ product }: { product: CatalogProduct }) {
   const badge = productBadge(product)
   return (
-    <div className="mt-3 rounded-[24px] bg-white p-4">
-      <div className="flex gap-3">
+    <Card className="mt-3 rounded-[24px] ring-0">
+      <CardContent className="flex gap-3">
         <div
           className="relative flex size-22 shrink-0 items-center justify-center rounded-2xl"
           style={{ backgroundColor: tileColor(product.color) }}
         >
           <img src={product.icon} alt="" className="size-16 object-contain" />
           {badge && (
-            <span className="absolute -right-1 -bottom-1 rounded-lg bg-brand-tint px-1.5 py-0.5 text-xs font-extrabold text-white shadow-sm">
+            <Badge className="absolute -right-1 -bottom-1 rounded-lg bg-brand-tint px-1.5 py-0.5 text-xs font-extrabold text-white shadow-sm">
               {badge}
-            </span>
+            </Badge>
           )}
         </div>
         <div className="min-w-0 flex-1 pt-0.5">
@@ -811,9 +877,10 @@ function ProductSummary({ product }: { product: CatalogProduct }) {
               {Object.entries(product.restrictions)
                 .slice(0, 2)
                 .map(([key, value]) => (
-                  <span
+                  <Badge
                     key={key}
-                    className="flex flex-col rounded-lg border border-[#e3ebf3] px-2 py-1 leading-tight"
+                    variant="outline"
+                    className="h-auto flex-col items-start gap-0 rounded-lg border-[#e3ebf3] px-2 py-1 leading-tight"
                   >
                     <span className="text-[10px] font-extrabold tracking-wider whitespace-nowrap text-navy uppercase">
                       {key}
@@ -821,13 +888,13 @@ function ProductSummary({ product }: { product: CatalogProduct }) {
                     <span className="text-xs font-extrabold whitespace-nowrap text-pink">
                       {value}
                     </span>
-                  </span>
+                  </Badge>
                 ))}
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -894,21 +961,24 @@ function FlexPanel({
             </span>
           </span>
         </label>
-        <div className="flex shrink-0 rounded-xl bg-white/90 p-1">
+        <ToggleGroup
+          type="single"
+          value={type}
+          onValueChange={(v) => (v === "default" || v === "expanded") && onType(v)}
+          spacing={0}
+          aria-label="Flex tier"
+          className="shrink-0 gap-0 rounded-xl bg-white/90 p-1"
+        >
           {(
             [
               ["default", "Default", defaultPrice],
               ["expanded", "Expanded", expandedPrice],
             ] as const
           ).map(([value, label, price]) => (
-            <button
+            <ToggleGroupItem
               key={value}
-              type="button"
-              onClick={() => onType(value)}
-              className={cn(
-                "flex flex-col items-center rounded-lg px-2 py-1 leading-tight",
-                type === value ? "bg-white shadow" : "opacity-50"
-              )}
+              value={value}
+              className="h-auto min-w-0 flex-col items-center gap-0 rounded-lg px-2 py-1 leading-tight opacity-50 hover:bg-transparent hover:opacity-50 data-[state=on]:bg-white data-[state=on]:opacity-100 data-[state=on]:shadow first:rounded-lg last:rounded-lg"
             >
               <span className="text-[9px] font-extrabold tracking-wider text-navy-soft uppercase">
                 {label}
@@ -916,9 +986,9 @@ function FlexPanel({
               <span className="text-sm font-extrabold whitespace-nowrap text-navy">
                 {price} €
               </span>
-            </button>
+            </ToggleGroupItem>
           ))}
-        </div>
+        </ToggleGroup>
       </div>
       {showBadges && enabled && (
         <div className="mt-3 flex flex-col items-start gap-2">
@@ -927,12 +997,13 @@ function FlexPanel({
             "Car plate can be changed before activation",
             "Travel date can be changed before activation",
           ].map((text) => (
-            <span
+            <Badge
               key={text}
-              className="rounded-lg bg-white/25 px-3 py-1.5 text-[14px] font-semibold text-white"
+              variant="secondary"
+              className="rounded-lg bg-white/25 px-3 py-1.5 text-[14px] font-semibold text-white hover:bg-white/25"
             >
               {text}
-            </span>
+            </Badge>
           ))}
         </div>
       )}
@@ -944,16 +1015,9 @@ function CreatingScreen() {
   return (
     <div className="flex min-h-[86dvh] flex-col items-center justify-center gap-8">
       <span className="relative flex size-28 items-center justify-center rounded-full bg-mint shadow-[0_0_60px_rgba(69,217,161,0.5)]">
-        <span className="size-12 animate-spin rounded-full border-4 border-transparent border-t-white" />
+        <Spinner className="size-12 text-white" />
       </span>
       <p className="text-xl font-semibold text-white">Creating your order…</p>
     </div>
   )
-}
-
-
-function toDateInput(unixSeconds: number): string {
-  const d = new Date(unixSeconds * 1000)
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }

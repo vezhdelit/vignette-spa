@@ -5,6 +5,10 @@ import {
   MoveHorizontal,
   ArrowLeftRight,
 } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardFooter } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { COUNTRY_NAMES, FlagRect } from "@/lib/countries"
 import type { CatalogProduct, ProductRestrictions } from "@/types/api"
 
@@ -59,8 +63,8 @@ export function ProductCard({
   const badge = productBadge(product)
 
   return (
-    <div className="rounded-[28px] bg-white p-4 shadow-[0_10px_30px_rgba(0,60,120,0.12)]">
-      <div className="flex gap-3">
+    <Card className="rounded-[28px] shadow-[0_10px_30px_rgba(0,60,120,0.12)] ring-0">
+      <CardContent className="flex gap-3">
         <div
           className="relative flex size-24 shrink-0 items-center justify-center rounded-2xl sm:size-28"
           style={{ backgroundColor: tileColor(product.color) }}
@@ -72,9 +76,9 @@ export function ProductCard({
             loading="lazy"
           />
           {badge && (
-            <span className="absolute -right-1 -bottom-1 rounded-lg bg-brand-tint px-1.5 py-0.5 text-[13px] font-extrabold text-white shadow-sm">
+            <Badge className="absolute -right-1 -bottom-1 rounded-lg bg-brand-tint px-1.5 py-0.5 text-[13px] font-extrabold text-white shadow-sm">
               {badge}
-            </span>
+            </Badge>
           )}
         </div>
 
@@ -98,9 +102,10 @@ export function ProductCard({
               </span>
             ) : (
               restrictions.map(({ key, label, icon: Icon }) => (
-                <span
+                <Badge
                   key={key}
-                  className="flex items-center gap-1.5 rounded-xl border border-[#e3ebf3] px-2 py-1"
+                  variant="outline"
+                  className="h-auto gap-1.5 rounded-xl border-[#e3ebf3] px-2 py-1"
                 >
                   <Icon className="size-3.5 shrink-0 text-navy-soft" />
                   <span className="flex flex-col leading-tight">
@@ -111,40 +116,40 @@ export function ProductCard({
                       {product.restrictions?.[key]}
                     </span>
                   </span>
-                </span>
+                </Badge>
               ))
             )}
           </div>
         </div>
-      </div>
+      </CardContent>
 
-      <button
-        type="button"
-        onClick={onSelect}
-        className="mt-4 w-full rounded-2xl bg-brand py-3.5 text-lg font-extrabold tracking-[0.25em] text-white transition active:scale-[0.98]"
-      >
-        SELECT
-      </button>
-    </div>
+      <CardFooter className="border-t-0 bg-transparent pt-0">
+        <Button variant="brand" size="xl" className="h-13 w-full text-lg" onClick={onSelect}>
+          Select
+        </Button>
+      </CardFooter>
+    </Card>
   )
 }
 
 export function ProductCardSkeleton() {
   return (
-    <div className="animate-pulse rounded-[28px] bg-white p-4">
-      <div className="flex gap-4">
-        <div className="size-32 shrink-0 rounded-2xl bg-cloud" />
+    <Card className="rounded-[28px] ring-0">
+      <CardContent className="flex gap-4">
+        <Skeleton className="size-32 shrink-0 rounded-2xl bg-cloud" />
         <div className="flex-1 space-y-3 pt-1">
-          <div className="h-3.5 w-1/2 rounded-full bg-cloud" />
-          <div className="h-5 w-3/4 rounded-full bg-cloud" />
-          <div className="h-3 w-1/3 rounded-full bg-cloud" />
+          <Skeleton className="h-3.5 w-1/2 rounded-full bg-cloud" />
+          <Skeleton className="h-5 w-3/4 rounded-full bg-cloud" />
+          <Skeleton className="h-3 w-1/3 rounded-full bg-cloud" />
           <div className="flex gap-2">
-            <div className="h-10 w-24 rounded-xl bg-cloud" />
-            <div className="h-10 w-24 rounded-xl bg-cloud" />
+            <Skeleton className="h-10 w-24 rounded-xl bg-cloud" />
+            <Skeleton className="h-10 w-24 rounded-xl bg-cloud" />
           </div>
         </div>
-      </div>
-      <div className="mt-4 h-12 w-full rounded-2xl bg-cloud" />
-    </div>
+      </CardContent>
+      <CardFooter className="border-t-0 bg-transparent pt-0">
+        <Skeleton className="h-12 w-full rounded-2xl bg-cloud" />
+      </CardFooter>
+    </Card>
   )
 }

@@ -348,7 +348,11 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                       >
                         <Flag code={plateCountry} className="h-6 w-9 rounded-md" />
                       </SelectTrigger>
-                      <SelectContent>
+                      {/* popper, not item-aligned: Radix's item-aligned mode positions
+                          off the <SelectValue> node, and this trigger renders a bare flag
+                          instead — without it the list is never placed and lands below
+                          the fold. */}
+                      <SelectContent position="popper" align="start">
                         {PLATE_COUNTRIES.map((c) => (
                           <SelectItem key={c} value={c} className="[&_span_svg]:size-full">
                             <Flag code={c} className="h-3.5 w-5 rounded-[2px]" />

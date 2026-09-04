@@ -11,16 +11,6 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -31,13 +21,13 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog"
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -136,7 +126,7 @@ export function OrderCard({
   onPay?: (order: Order) => void
 }) {
   const [expanded, setExpanded] = useState(false)
-  const [dialog, setDialog] = useState<"modify" | "transfer" | "refund" | null>(null)
+  const [drawer, setDrawer] = useState<"modify" | "transfer" | "refund" | null>(null)
   const guest = useAuthStore((s) => s.user?.guest ?? true)
 
   // unpaid — expanding the card offers just the Complete payment button
@@ -216,20 +206,20 @@ export function OrderCard({
                 <ActionChip
                   label="Transfer Vignette"
                   icon={<ExternalLink className="size-3.5" />}
-                  onClick={() => setDialog("transfer")}
+                  onClick={() => setDrawer("transfer")}
                   disabled={guest}
                 />
                 <ActionChip
                   label="Modify Vignette Data"
                   icon={<Pencil className="size-3.5" />}
-                  onClick={() => setDialog("modify")}
+                  onClick={() => setDrawer("modify")}
                   disabled={guest}
                 />
                 {refundAction && !guest && (
                   <ActionChip
                     label={`Refund${refundAction.percent ? ` ${refundAction.percent}%` : ""}`}
                     icon={<Undo2 className="size-3.5" />}
-                    onClick={() => setDialog("refund")}
+                    onClick={() => setDrawer("refund")}
                   />
                 )}
               </div>
@@ -302,16 +292,16 @@ export function OrderCard({
           </span>
         </div>
 
-        <ModifyDialog order={order} open={dialog === "modify"} onClose={() => setDialog(null)} />
-        <TransferDialog
+        <ModifyDrawer order={order} open={drawer === "modify"} onClose={() => setDrawer(null)} />
+        <TransferDrawer
           order={order}
-          open={dialog === "transfer"}
-          onClose={() => setDialog(null)}
+          open={drawer === "transfer"}
+          onClose={() => setDrawer(null)}
         />
-        <RefundDialog
+        <RefundDrawer
           order={order}
-          open={dialog === "refund"}
-          onClose={() => setDialog(null)}
+          open={drawer === "refund"}
+          onClose={() => setDrawer(null)}
           amount={refundAction?.amount_eur}
           percent={refundAction?.percent}
         />
@@ -393,9 +383,14 @@ function ActionChip({
   )
 }
 
-/* ------------------------------------------------------------- dialogs */
+/* ------------------------------------------------------------- drawers */
 
-function ModifyDialog({
+// Bottom sheet for the per-order actions: light surface, app-wide corner
+// radius, capped so the keyboard never pushes the footer off screen.
+const ACTION_DRAWER_CLASS =
+  "border-0 data-[vaul-drawer-direction=bottom]:max-h-[92dvh] data-[vaul-drawer-direction=bottom]:rounded-t-[26px]"
+
+function ModifyDrawer({
   order,
   open,
   onClose,
@@ -446,7 +441,7 @@ function ModifyDialog({
   }
 
   return (
-    <Dialog
+    <Drawer
       open={open}
       onOpenChange={(v) => {
         if (!v) {
@@ -455,22 +450,22 @@ function ModifyDialog({
         }
       }}
     >
-      <DialogContent className="rounded-3xl">
-        <DialogHeader>
-          <DialogTitle>Change vignette data</DialogTitle>
-          <DialogDescription>
+      <DrawerContent className={ACTION_DRAWER_CLASS}>
+        <DrawerHeader>
+          <DrawerTitle>Change vignette data</DrawerTitle>
+          <DrawerDescription>
             The car plate can be changed before the vignette activates.
-          </DialogDescription>
-        </DialogHeader>
-        {reasonMessage && (
-          <Alert variant="destructive" className="border-pink text-pink">
-            <TriangleAlert />
-            <AlertDescription className="font-semibold text-pink">
-              {reasonMessage}
-            </AlertDescription>
-          </Alert>
-        )}
-        <div className="space-y-3">
+          </DrawerDescription>
+        </DrawerHeader>
+        <div className="space-y-3 overflow-y-auto px-4">
+          {reasonMessage && (
+            <Alert variant="destructive" className="border-pink text-pink">
+              <TriangleAlert />
+              <AlertDescription className="font-semibold text-pink">
+                {reasonMessage}
+              </AlertDescription>
+            </Alert>
+          )}
           <div className="space-y-1.5">
             <Label htmlFor={`plate-${order.id}`}>Registration plate</Label>
             <Input
@@ -530,23 +525,24 @@ function ModifyDialog({
             </Label>
           )}
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
+        <DrawerFooter>
           <Button
+            size="lg"
             onClick={submit}
             disabled={modify.isPending || ineligible || !confirmed || !plate.trim() || !vinOk}
           >
             {modify.isPending && <Spinner />} Save changes
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <Button variant="outline" size="lg" onClick={onClose}>
+            Cancel
+          </Button>
+        </DrawerFooter>
+      </DrawerContent>
+    </Drawer>
   )
 }
 
-function TransferDialog({
+function TransferDrawer({
   order,
   open,
   onClose,
@@ -570,7 +566,7 @@ function TransferDialog({
   }
 
   return (
-    <Dialog
+    <Drawer
       open={open}
       onOpenChange={(v) => {
         if (!v) {
@@ -579,15 +575,15 @@ function TransferDialog({
         }
       }}
     >
-      <DialogContent className="rounded-3xl">
-        <DialogHeader>
-          <DialogTitle>Transfer vignette</DialogTitle>
-          <DialogDescription>
+      <DrawerContent className={ACTION_DRAWER_CLASS}>
+        <DrawerHeader>
+          <DrawerTitle>Transfer vignette</DrawerTitle>
+          <DrawerDescription>
             You can transfer your vignette to another account only once. The
             recipient must already be registered with this email.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
+          </DrawerDescription>
+        </DrawerHeader>
+        <div className="space-y-3 overflow-y-auto px-4">
           <div className="space-y-1.5">
             <Label htmlFor={`transfer-${order.id}`}>Recipient email</Label>
             <Input
@@ -610,24 +606,28 @@ function TransferDialog({
             </span>
           </Label>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
+        <DrawerFooter>
           <Button
+            size="lg"
             onClick={submit}
             disabled={transfer.isPending || !confirmed || !email.includes("@")}
           >
             {transfer.isPending && <Spinner />} Transfer
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <Button variant="outline" size="lg" onClick={onClose}>
+            Cancel
+          </Button>
+        </DrawerFooter>
+      </DrawerContent>
+    </Drawer>
   )
 }
 
-/** Irreversible → an AlertDialog (no outside-click dismiss) with a destructive action. */
-function RefundDialog({
+/**
+ * Irreversible → a non-dismissible drawer (no drag/outside-click close, only
+ * the two buttons) with a destructive action.
+ */
+function RefundDrawer({
   order,
   open,
   onClose,
@@ -653,34 +653,31 @@ function RefundDialog({
   }
 
   return (
-    <AlertDialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <AlertDialogContent className="rounded-3xl">
-        <AlertDialogHeader>
-          <AlertDialogTitle>Refund this vignette?</AlertDialogTitle>
-          <AlertDialogDescription>
+    <Drawer open={open} onOpenChange={(v) => !v && onClose()} dismissible={false}>
+      <DrawerContent className={ACTION_DRAWER_CLASS}>
+        <DrawerHeader>
+          <DrawerTitle>Refund this vignette?</DrawerTitle>
+          <DrawerDescription>
             {percent === 100
               ? `You'll get a full refund${amount ? ` of ${amount} €` : ""}.`
               : `A partial refund of ${percent ?? 50}%${amount ? ` (${amount} €)` : ""} is available.`}{" "}
             The vignette stops being valid immediately.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={refund.isPending}>Keep vignette</AlertDialogCancel>
-          <AlertDialogAction asChild>
-            <Button
-              variant="destructive"
-              disabled={refund.isPending}
-              onClick={(e) => {
-                // stay open until the request settles (Radix closes on click otherwise)
-                e.preventDefault()
-                void submit()
-              }}
-            >
-              {refund.isPending && <Spinner />} Refund
-            </Button>
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+          </DrawerDescription>
+        </DrawerHeader>
+        <DrawerFooter>
+          <Button
+            variant="destructive"
+            size="lg"
+            disabled={refund.isPending}
+            onClick={() => void submit()}
+          >
+            {refund.isPending && <Spinner />} Refund
+          </Button>
+          <Button variant="outline" size="lg" disabled={refund.isPending} onClick={onClose}>
+            Keep vignette
+          </Button>
+        </DrawerFooter>
+      </DrawerContent>
+    </Drawer>
   )
 }

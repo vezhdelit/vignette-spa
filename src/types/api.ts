@@ -13,6 +13,9 @@ export interface ApiEnvelope<T> {
   error: ApiError | null
   result: T
   pages?: { total: number; current: number }
+  /** GET /public/me/notifications only — the badge numbers ride alongside the page */
+  unread_count?: number
+  total_count?: number
 }
 
 /* ------------------------------------------------------------------ auth */
@@ -80,22 +83,36 @@ export interface Referrals {
   income: number
 }
 
+/**
+ * GET /public/me/vehicles. Signed in: the account's saved cars (vehicles
+ * table, numeric id). Guest: the distinct plates on the orders this session
+ * placed itself — no DB row, so `id` is the string "<country>:<plate>".
+ * Treat `id` as opaque either way.
+ */
 export interface Vehicle {
   id: number | string
   plate: string
   country: string
   vin_code: string | null
-  created_at: number
+  created_at: number | null
 }
 
 export interface AppNotification {
   id: number | string
   title: string
   body: string
+  /** same shape as the push payload, e.g. { type: "order_paid", order_id } */
   data: Record<string, unknown> | null
   read: boolean
   read_at: number | null
   created_at: number
+}
+
+/** GET /public/me/notifications/summary — badge numbers + newest row, no read-state write. */
+export interface NotificationsSummary {
+  unread_count: number
+  total_count: number
+  latest: AppNotification | null
 }
 
 export interface Consent {
@@ -161,6 +178,17 @@ export interface Order {
   full_refund?: RefundAction
   partial_refund?: RefundAction
   /** CREATED (unpaid) orders only: the checkout URL — reopen it to finish paying */
+  payment_link?: string
+}
+
+/**
+ * GET /public/me/orders/:id/status — the checkout poll: just the label (and
+ * payment_link while unpaid), none of the cars/prices/action blocks.
+ */
+export interface OrderStatus {
+  id: string
+  custom_id: string | null
+  status: OrderStatusLabel
   payment_link?: string
 }
 

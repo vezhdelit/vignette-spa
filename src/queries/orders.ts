@@ -14,6 +14,7 @@ import type {
   CreateOrderResult,
   Order,
   OrderChange,
+  OrderStatus,
 } from "@/types/api"
 
 /** valid keys for the ?status CSV filter (repositories/orders.js AUTH_STATUS_KEYS) */
@@ -46,6 +47,8 @@ export const orderKeys = {
     ["orders", scope, "list", filter] as const,
   detail: (scope: string, id: string) =>
     ["orders", scope, "detail", id] as const,
+  status: (scope: string, id: string) =>
+    ["orders", scope, "status", id] as const,
 }
 
 const orderPath = (id: string) => `/public/me/orders/${encodeURIComponent(id)}`
@@ -95,30 +98,45 @@ export function useOrders(filter: OrdersFilter = {}) {
   return { ...query, orders, pagination }
 }
 
-/** One order; `pollUntilPaid` refetches every 4s while it is still CREATED. */
-export function useOrder(
-  id: string | null,
-  { enabled = true, pollUntilPaid = false } = {}
-) {
+/** One order — the full shape with its action blocks. */
+export function useOrder(id: string | null, { enabled = true } = {}) {
   const { scope, ready } = useSessionScope()
   return useQuery({
     queryKey: orderKeys.detail(scope, id ?? ""),
     queryFn: () => apiResult<Order>(orderPath(id!)),
     enabled: ready && enabled && id !== null,
+  })
+}
+
+/**
+ * GET orders/:id/status — the lightweight checkout poll: the status label
+ * plus payment_link while unpaid, none of the cars/prices/action-block work
+ * of the full read. Refetches every 4s while the order is still CREATED and
+ * stops on its own the moment it isn't.
+ */
+export function useOrderStatus(id: string | null, { enabled = true } = {}) {
+  const { scope, ready } = useSessionScope()
+  return useQuery({
+    queryKey: orderKeys.status(scope, id ?? ""),
+    queryFn: () => apiResult<OrderStatus>(`${orderPath(id!)}/status`),
+    enabled: ready && enabled && id !== null,
     refetchInterval: (q) =>
-      pollUntilPaid && (!q.state.data || q.state.data.status === "CREATED")
-        ? 4_000
-        : false,
+      !q.state.data || q.state.data.status === "CREATED" ? 4_000 : false,
   })
 }
 
 /**
  * Checkout companion: watches a freshly created order while the user pays
- * (in the in-sheet iframe) and reports the moment it leaves CREATED.
+ * (in the in-sheet iframe) and reports the moment it leaves CREATED. Polls
+ * the status endpoint, not the full order — the success screen's list
+ * invalidation fetches that once, afterwards.
  */
 export function usePaymentStatus(orderId: string | null, watching: boolean) {
-  const { data } = useOrder(orderId, { enabled: watching, pollUntilPaid: true })
-  return { paid: Boolean(data && data.status !== "CREATED"), order: data ?? null }
+  const { data } = useOrderStatus(orderId, { enabled: watching })
+  return {
+    paid: Boolean(data && data.status !== "CREATED"),
+    status: data?.status ?? null,
+  }
 }
 
 /** Refetch every orders list of this session (after a payment landed, etc). */

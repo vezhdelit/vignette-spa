@@ -7,6 +7,7 @@ import { HomePage } from "@/pages/HomePage"
 import { VignettesPage } from "@/pages/VignettesPage"
 import { SupportPage } from "@/pages/SupportPage"
 import { AccountPage } from "@/pages/AccountPage"
+import { NotificationsPage } from "@/pages/NotificationsPage"
 import { dropSessionQueries, queryClient } from "@/lib/query"
 import { useAuthStore } from "@/stores/auth"
 
@@ -28,6 +29,7 @@ export default function App() {
             <Route path="/vignettes" element={<VignettesPage />} />
             <Route path="/support" element={<SupportPage />} />
             <Route path="/account" element={<AccountPage />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

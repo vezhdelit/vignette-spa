@@ -56,6 +56,7 @@ import {
   type Catalog,
 } from "@/queries/catalog"
 import { useMe } from "@/queries/me"
+import { useVehicles } from "@/queries/account"
 import {
   useCreateOrder,
   useInvalidateOrders,
@@ -92,6 +93,9 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   const queryClient = useQueryClient()
   const isGuest = useAuthStore((s) => s.user?.guest ?? true)
   const { data: me } = useMe()
+  // saved plates for one-tap fill — guest ok: a guest gets the plates from
+  // the orders this session placed earlier (GET /me/vehicles)
+  const savedVehicles = useVehicles().data ?? []
   const { flexOptions, countries } = useCatalog().data ?? EMPTY_CATALOG
   const createOrder = useCreateOrder()
   const invalidateOrders = useInvalidateOrders()
@@ -401,6 +405,36 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                     </div>
                   </CardContent>
                 </Card>
+
+                {/* saved plates — the account's cars, or a guest's own earlier orders */}
+                {savedVehicles.length > 0 && (
+                  <ScrollArea className="-mx-4 mt-2">
+                    <div className="flex w-max gap-2 px-4 pb-1">
+                      {savedVehicles.slice(0, 8).map((v) => {
+                        const selected =
+                          v.plate === plate.replace(/\s+/g, "") && v.country === plateCountry
+                        return (
+                          <Button
+                            key={String(v.id)}
+                            type="button"
+                            variant="chip"
+                            size="chip"
+                            aria-pressed={selected}
+                            onClick={() => {
+                              setPlate(v.plate)
+                              setPlateCountry(v.country)
+                            }}
+                            className={cn(selected && "ring-2 ring-white/80")}
+                          >
+                            <Flag code={v.country} className="h-3 w-4.5 rounded-[2px]" />
+                            {v.plate}
+                          </Button>
+                        )
+                      })}
+                    </div>
+                    <ScrollBar orientation="horizontal" className="hidden" />
+                  </ScrollArea>
+                )}
 
                 {/* period picker */}
                 <ScrollArea className="-mx-4 mt-3">

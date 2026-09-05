@@ -38,6 +38,7 @@ import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { PlateBadge } from "@/components/order/PlateBadge"
+import { NotificationsList } from "@/components/notifications/NotificationsList"
 import { apiErrorMessage, ApiRequestError } from "@/lib/api"
 import { formatCents, formatDate } from "@/lib/format"
 import {
@@ -51,10 +52,11 @@ import {
 import { webPushSupported } from "@/lib/webpush"
 import { useAuthStore } from "@/stores/auth"
 import { useMe } from "@/queries/me"
+import { useSessionScope } from "@/queries/session"
 import {
   useConsents,
   useGrantConsent,
-  useNotifications,
+  useNotificationsSummary,
   useReferrals,
   useRevokeConsent,
   useSessions,
@@ -104,7 +106,14 @@ export function AccountPage() {
         </CardContent>
       </Card>
 
-      {isGuest ? <SignInCard /> : <SignedInSections />}
+      {isGuest ? (
+        <>
+          <SignInCard />
+          <GuestSections />
+        </>
+      ) : (
+        <SignedInSections />
+      )}
 
       {!isGuest && <SignOutButtons />}
       <p className="pt-1 text-center text-xs font-medium text-white/60">
@@ -443,6 +452,8 @@ function SignInCard() {
 /* ----------------------------------------------------- signed-in extras */
 
 function SignedInSections() {
+  // the same number the header bell shows — kept fresh by that poll
+  const unread = useNotificationsSummary().data?.unread_count ?? 0
   return (
     <div className="space-y-3">
       <Section icon={WalletIcon} title="Wallet">
@@ -454,8 +465,18 @@ function SignedInSections() {
       <Section icon={Car} title="My vehicles">
         <VehiclesBody />
       </Section>
-      <Section icon={Bell} title="Notifications">
-        <NotificationsBody />
+      <Section
+        icon={Bell}
+        title="Notifications"
+        badge={
+          unread > 0 ? (
+            <Badge className="rounded-full bg-pink px-2 py-0.5 text-[11px] font-extrabold text-white hover:bg-pink">
+              {unread > 99 ? "99+" : unread}
+            </Badge>
+          ) : null
+        }
+      >
+        <NotificationsList />
       </Section>
       <Section icon={BellRing} title="Push notifications">
         <PushBody />
@@ -471,6 +492,23 @@ function SignedInSections() {
 }
 
 /**
+ * What a guest session can still read: its vehicles are derived from the
+ * orders it placed itself (GET /me/vehicles is guest-ok). Wallet, referrals,
+ * consents and the notification writes are 403 guest_not_allowed, and a
+ * guest's notification inbox is always empty — so nothing else is offered
+ * until they sign in.
+ */
+function GuestSections() {
+  return (
+    <div className="space-y-3">
+      <Section icon={Car} title="My vehicles">
+        <VehiclesBody />
+      </Section>
+    </div>
+  )
+}
+
+/**
  * Collapsible white card. CollapsibleContent mounts its children only while
  * open — that is what makes each body's query lazy: nothing is fetched until
  * the user opens the section, and the cache serves the next open instantly.
@@ -478,10 +516,13 @@ function SignedInSections() {
 function Section({
   icon: Icon,
   title,
+  badge,
   children,
 }: {
   icon: React.ComponentType<{ className?: string }>
   title: string
+  /** e.g. an unread count, shown between the title and the chevron */
+  badge?: React.ReactNode
   children: React.ReactNode
 }) {
   return (
@@ -492,6 +533,7 @@ function Section({
             <Icon className="size-5.5 text-brand" />
           </span>
           <span className="flex-1 text-[16px] font-extrabold text-navy">{title}</span>
+          {badge}
           <ChevronDown className="size-5 text-navy-soft transition-transform group-data-[state=open]:rotate-180" />
         </CollapsibleTrigger>
         <CollapsibleContent className="px-4 pb-4">{children}</CollapsibleContent>
@@ -613,13 +655,19 @@ function ReferralsBody() {
 }
 
 function VehiclesBody() {
+  const { guest } = useSessionScope()
+  // guest: the plates on this session's own orders; signed in: the account's saved cars
   const query = useVehicles()
   const { data } = query
   return (
     <SectionBody query={query}>
       {data &&
         (data.length === 0 ? (
-          <EmptyNote>Vehicles from your orders will appear here.</EmptyNote>
+          <EmptyNote>
+            {guest
+              ? "Plates from the vignettes you buy here will appear here."
+              : "Vehicles from your orders will appear here."}
+          </EmptyNote>
         ) : (
           <div className="space-y-2.5">
             {data.map((v) => (
@@ -634,47 +682,6 @@ function VehiclesBody() {
             ))}
           </div>
         ))}
-    </SectionBody>
-  )
-}
-
-function NotificationsBody() {
-  // fetching a page marks it read server-side (mark_read defaults on)
-  const query = useNotifications()
-  const { items, pagination, hasNextPage, fetchNextPage, isFetchingNextPage } = query
-  return (
-    <SectionBody query={query}>
-      {items.length === 0 ? (
-        <EmptyNote>Nothing here yet.</EmptyNote>
-      ) : (
-        <div className="space-y-2.5">
-          {items.map((n) => (
-            <Tile
-              key={String(n.id)}
-              className={cn(n.read ? "bg-[#f6f8fa]" : "bg-brand-soft/50")}
-            >
-              <p className="text-sm font-extrabold text-navy">{n.title}</p>
-              <p className="mt-0.5 text-sm font-medium text-navy/80">{n.body}</p>
-              <p className="mt-1 text-[11px] font-semibold text-navy-soft">
-                {formatDate(n.created_at)}
-              </p>
-            </Tile>
-          ))}
-          {hasNextPage && (
-            <Button
-              variant="secondary"
-              size="pill"
-              className="h-9 w-full bg-[#f1f4f8] text-sm font-bold text-navy"
-              disabled={isFetchingNextPage}
-              onClick={() => void fetchNextPage()}
-            >
-              {isFetchingNextPage
-                ? "Loading…"
-                : `Load more (${pagination.current}/${pagination.total})`}
-            </Button>
-          )}
-        </div>
-      )}
     </SectionBody>
   )
 }

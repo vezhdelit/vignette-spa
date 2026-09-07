@@ -61,11 +61,11 @@ Every request except the auth handshake goes through TanStack Query —
   create/modify/refund/transfer mutations, which patch the cached lists.
 - `catalog.ts` — products + flex tiers in one query (5-min stale), with pure
   helpers `productsFor()` / `defaultFlexType()`. Keyed by the display currency
-  from `stores/settings.ts` (Account → Currency): products are fetched with
-  `?currency=`, which the API converts server-side (with its own conversion
-  margin). Flex is always EUR and so is the actual charge, so the order sheet
-  converts the flex line with the product's own EUR/display ratio and prints
-  the EUR amount that will be taken.
+  from `stores/settings.ts` (Account → Currency): both endpoints are fetched
+  with `?currency=`, which the API converts server-side (with its own
+  conversion margin). The charge is always settled in EUR, so the order sheet
+  also reads the EUR catalog and prints the EUR amount that will be taken
+  whenever another display currency is selected.
 - `me.ts`, `account.ts`, `push.ts` — profile, the Account tab sections
   (each section's body mounts its query only while expanded), the
   notifications inbox (list with `mark_read`, summary poll for the bell

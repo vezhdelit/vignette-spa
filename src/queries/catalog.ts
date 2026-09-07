@@ -7,7 +7,7 @@ import type { CatalogProduct, FlexOption } from "@/types/api"
 
 export interface Catalog {
   products: CatalogProduct[]
-  /** flex tiers that are actually enabled — always priced in EUR (see below) */
+  /** flex tiers that are actually enabled, in the same currency as products */
   flexOptions: FlexOption[]
   /** the countries that have products, in brand order (carousel) */
   countries: string[]
@@ -27,20 +27,19 @@ export const catalogKeys = {
 }
 
 /**
- * GET /public/catalog/products?currency=… converts every product price into
- * that currency server-side (with the API's conversion margin baked in).
- * Flex (products/flex) ignores the param and is always EUR, and so is the
- * actual charge — OrderSheet converts the flex line for display and states
- * the EUR amount that will be taken.
+ * Both catalogue endpoints take ?currency= and convert server-side with the
+ * same margin, so products and flex tiers arrive in one currency. The actual
+ * charge is still settled in EUR — OrderSheet states the EUR total when a
+ * different display currency is selected.
  */
 async function fetchCatalog(currency: string): Promise<Catalog> {
   const [products, flexOptions] = await Promise.all([
     apiResult<CatalogProduct[]>("/public/catalog/products", {
       query: { currency, type: "vignette" },
     }),
-    apiResult<FlexOption[]>("/public/catalog/products/flex").catch(
-      () => [] as FlexOption[]
-    ),
+    apiResult<FlexOption[]>("/public/catalog/products/flex", {
+      query: { currency },
+    }).catch(() => [] as FlexOption[]),
   ])
 
   const available = new Set(products.map((p) => p.country))

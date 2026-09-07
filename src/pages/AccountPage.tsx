@@ -7,6 +7,7 @@ import {
   BellRing,
   Car,
   ChevronDown,
+  Coins,
   Copy,
   Gift,
   LogOut,
@@ -37,6 +38,7 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { PlateBadge } from "@/components/order/PlateBadge"
 import { NotificationsList } from "@/components/notifications/NotificationsList"
 import { apiErrorMessage, ApiRequestError } from "@/lib/api"
@@ -51,6 +53,7 @@ import {
 } from "@/lib/social"
 import { webPushSupported } from "@/lib/webpush"
 import { useAuthStore } from "@/stores/auth"
+import { CURRENCIES, isCurrency, useSettingsStore } from "@/stores/settings"
 import { useMe } from "@/queries/me"
 import { useSessionScope } from "@/queries/session"
 import {
@@ -487,6 +490,9 @@ function SignedInSections() {
       <Section icon={ShieldCheck} title="Partner access">
         <ConsentsBody />
       </Section>
+      <Section icon={Coins} title="Currency">
+        <CurrencyBody />
+      </Section>
     </div>
   )
 }
@@ -504,6 +510,45 @@ function GuestSections() {
       <Section icon={Car} title="My vehicles">
         <VehiclesBody />
       </Section>
+      <Section icon={Coins} title="Currency">
+        <CurrencyBody />
+      </Section>
+    </div>
+  )
+}
+
+/**
+ * Display currency for catalog prices (stores/settings.ts). Device-local, no
+ * API call — the catalog query refetches in the chosen currency. Guests get
+ * it too: it's a display preference, not account data.
+ */
+function CurrencyBody() {
+  const currency = useSettingsStore((s) => s.currency)
+  const setCurrency = useSettingsStore((s) => s.setCurrency)
+  return (
+    <div className="space-y-3">
+      <ToggleGroup
+        type="single"
+        value={currency}
+        onValueChange={(v) => v && isCurrency(v) && setCurrency(v)}
+        spacing={0}
+        aria-label="Display currency"
+        className="flex-wrap gap-1.5 rounded-2xl bg-brand-soft/40 p-1.5"
+      >
+        {CURRENCIES.map((code) => (
+          <ToggleGroupItem
+            key={code}
+            value={code}
+            className="h-auto min-w-0 rounded-xl px-3 py-1.5 text-sm font-extrabold text-navy-soft hover:bg-transparent data-[state=on]:bg-white data-[state=on]:text-navy data-[state=on]:shadow first:rounded-xl last:rounded-xl"
+          >
+            {code}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+      <p className="text-xs font-semibold text-navy-soft">
+        Prices are shown in this currency. Payments are always taken in euro;
+        other currencies are estimates.
+      </p>
     </div>
   )
 }

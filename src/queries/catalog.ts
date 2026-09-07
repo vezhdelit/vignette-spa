@@ -2,11 +2,12 @@ import { useQuery } from "@tanstack/react-query"
 import { apiResult } from "@/lib/api"
 import { VIGNETTE_COUNTRIES } from "@/lib/countries"
 import { useSessionScope } from "@/queries/session"
+import { useSettingsStore } from "@/stores/settings"
 import type { CatalogProduct, FlexOption } from "@/types/api"
 
 export interface Catalog {
   products: CatalogProduct[]
-  /** flex tiers that are actually enabled */
+  /** flex tiers that are actually enabled — always priced in EUR (see below) */
   flexOptions: FlexOption[]
   /** the countries that have products, in brand order (carousel) */
   countries: string[]
@@ -20,13 +21,22 @@ export const EMPTY_CATALOG: Catalog = {
 }
 
 export const catalogKeys = {
+  /** prefix of every catalog query, for invalidation */
   all: ["catalog"] as const,
+  currency: (currency: string) => ["catalog", currency] as const,
 }
 
-async function fetchCatalog(): Promise<Catalog> {
+/**
+ * GET /public/catalog/products?currency=… converts every product price into
+ * that currency server-side (with the API's conversion margin baked in).
+ * Flex (products/flex) ignores the param and is always EUR, and so is the
+ * actual charge — OrderSheet converts the flex line for display and states
+ * the EUR amount that will be taken.
+ */
+async function fetchCatalog(currency: string): Promise<Catalog> {
   const [products, flexOptions] = await Promise.all([
     apiResult<CatalogProduct[]>("/public/catalog/products", {
-      query: { currency: "EUR", type: "vignette" },
+      query: { currency, type: "vignette" },
     }),
     apiResult<FlexOption[]>("/public/catalog/products/flex").catch(
       () => [] as FlexOption[]
@@ -47,15 +57,19 @@ async function fetchCatalog(): Promise<Catalog> {
 }
 
 /**
- * The product catalog (+ flex tiers). Not session-scoped — it's the same
- * for every caller of this client — and changes rarely, so it stays fresh
- * for a while.
+ * The product catalog (+ flex tiers) in the user's display currency
+ * (stores/settings.ts), or in `currency` when given. Not session-scoped —
+ * it's the same for every caller of this client — and changes rarely, so it
+ * stays fresh for a while. One cache entry per currency: switching back and
+ * forth does not refetch.
  */
-export function useCatalog() {
+export function useCatalog(currency?: string) {
   const { ready } = useSessionScope()
+  const selected = useSettingsStore((s) => s.currency)
+  const resolved = currency ?? selected
   return useQuery({
-    queryKey: catalogKeys.all,
-    queryFn: fetchCatalog,
+    queryKey: catalogKeys.currency(resolved),
+    queryFn: () => fetchCatalog(resolved),
     enabled: ready,
     staleTime: 5 * 60_000,
   })

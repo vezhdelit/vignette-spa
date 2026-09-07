@@ -46,18 +46,35 @@ export function formatEndDate(endDate: number | string | null | undefined): stri
   return String(endDate)
 }
 
-/** Wallet balance/bonuses and referral income arrive as integer cents. */
-export function formatCents(cents: number, currency = "EUR"): string {
-  const symbol = currency === "EUR" ? "€" : currency
-  return `${(cents / 100).toFixed(2)} ${symbol}`
+/** Symbols for the currencies the UI offers (stores/settings.ts); unknown codes print as-is. */
+export const CURRENCY_SYMBOLS: Record<string, string> = {
+  EUR: "€",
+  UAH: "₴",
+  USD: "$",
+  GBP: "£",
+  CHF: "CHF",
+  CZK: "Kč",
+  PLN: "zł",
+  HUF: "Ft",
+  RON: "lei",
+  BGN: "лв",
 }
 
-export function formatMoney(amount: number, currency = "EUR"): string {
-  const symbol = currency === "EUR" ? "€" : currency
-  // trim trailing zeros but keep up to 2 decimals: 14.95 €, 9.7 €, 3 €
+const currencySymbol = (currency: string) => CURRENCY_SYMBOLS[currency] ?? currency
+
+/** Wallet balance/bonuses and referral income arrive as integer cents. */
+export function formatCents(cents: number, currency = "EUR"): string {
+  return `${(cents / 100).toFixed(2)} ${currencySymbol(currency)}`
+}
+
+/**
+ * Catalog prices are decimal amounts already in the requested currency.
+ * Trims trailing zeros but keeps up to 2 decimals: "14.95 €", "9.7 €", "3 €" —
+ * the same rendering the raw `{price} €` interpolation produced before.
+ */
+export function formatPrice(amount: number, currency = "EUR"): string {
   const rounded = Math.round(amount * 100) / 100
-  const text = Number.isInteger(rounded) ? String(rounded) : String(rounded)
-  return `${text} ${symbol}`
+  return `${rounded} ${currencySymbol(currency)}`
 }
 
 /** start of today / tomorrow in unix seconds (local time) */

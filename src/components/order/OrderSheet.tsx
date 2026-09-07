@@ -42,12 +42,14 @@ import {
   dayStart,
   formatDate,
   formatDayMonth,
+  formatPrice,
   periodLabel,
 } from "@/lib/format"
 import { ApiRequestError } from "@/lib/api"
 import { isValidVin } from "@/lib/vehicle"
 import { getInstallationId } from "@/lib/webpush"
 import { useAuthStore } from "@/stores/auth"
+import { useSettingsStore } from "@/stores/settings"
 import {
   catalogKeys,
   defaultFlexType,
@@ -96,7 +98,13 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   // saved plates for one-tap fill — guest ok: a guest gets the plates from
   // the orders this session placed earlier (GET /me/vehicles)
   const savedVehicles = useVehicles().data ?? []
+  const currency = useSettingsStore((s) => s.currency)
   const { flexOptions, countries } = useCatalog().data ?? EMPTY_CATALOG
+  // The EUR twin of the catalog (same query when EUR is selected): flex is
+  // always quoted in EUR and so is the actual charge, so a non-EUR display
+  // needs the EUR prices to convert the flex line and to say what the card
+  // will really be charged.
+  const eurProducts = useCatalog("EUR").data?.products ?? []
   const createOrder = useCreateOrder()
   const invalidateOrders = useInvalidateOrders()
 
@@ -152,7 +160,9 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
       // read, not subscribed: a catalog refetch mid-order must not reset the form
       setFlexType(
         defaultFlexType(
-          queryClient.getQueryData<Catalog>(catalogKeys.all) ?? EMPTY_CATALOG
+          queryClient.getQueryData<Catalog>(
+            catalogKeys.currency(useSettingsStore.getState().currency)
+          ) ?? EMPTY_CATALOG
         )
       )
       setTerms(true)
@@ -200,13 +210,32 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   const flexOption =
     flexOptions.find((f) => f.type === flexType) ??
     flexOptions.find((f) => f.is_default)
-  const flexPrice = flexOption?.price ?? (flexType === "expanded" ? 5.98 : 2.99)
+  // flex tiers are EUR regardless of the display currency
+  const flexPriceEur = flexOption?.price ?? (flexType === "expanded" ? 5.98 : 2.99)
+  const eurPrice = period
+    ? eurProducts.find((p) => p.name === product.name)?.price[period]
+    : undefined
+  // display-currency units per euro, taken from this very product so the
+  // converted flex line carries the same conversion margin the catalog
+  // prices do; 1 while EUR is selected or the EUR catalog hasn't arrived
+  const rate =
+    currency !== "EUR" && selectedPrice && eurPrice && eurPrice.total_price > 0
+      ? selectedPrice.total_price / eurPrice.total_price
+      : 1
+  const toDisplay = (eur: number) => Math.round(eur * rate * 100) / 100
+  const fmt = (amount: number) => formatPrice(amount, currency)
+  const flexPrice = toDisplay(flexPriceEur)
   const servicePrice = selectedPrice
     ? Math.round((selectedPrice.total_price - selectedPrice.government_price) * 100) / 100
     : 0
   const total = selectedPrice
     ? Math.round((selectedPrice.total_price + (flexEnabled ? flexPrice : 0)) * 100) / 100
     : 0
+  // what the payment provider actually takes — orders are always settled in EUR
+  const eurTotal =
+    currency !== "EUR" && eurPrice
+      ? Math.round((eurPrice.total_price + (flexEnabled ? flexPriceEur : 0)) * 100) / 100
+      : null
   const endDate = period ? addDays(startDate, Number(period)) - 60 : startDate
   const isToday = startDate === dayStart(0)
   const isTomorrow = startDate === dayStart(1)
@@ -463,7 +492,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                             )}
                           </span>
                           <span className="text-lg font-extrabold text-navy">
-                            {product.price[p].total_price} €
+                            {fmt(product.price[p].total_price)}
                           </span>
                         </ToggleGroupItem>
                       )
@@ -599,11 +628,11 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                       <div className="mt-4 space-y-2.5 px-1">
                         <PriceRow
                           label="Official Vignette"
-                          value={`${selectedPrice.government_price} €`}
+                          value={fmt(selectedPrice.government_price)}
                         />
                         <PriceRow
                           label="Vignette Online Identification + VAT"
-                          value={`${servicePrice} €`}
+                          value={fmt(servicePrice)}
                         />
                       </div>
                     )}
@@ -612,8 +641,13 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                       onEnabled={setFlexEnabled}
                       type={flexType}
                       onType={setFlexType}
-                      defaultPrice={flexOptions.find((f) => f.type === "default")?.price ?? 2.99}
-                      expandedPrice={flexOptions.find((f) => f.type === "expanded")?.price ?? 5.98}
+                      defaultPrice={toDisplay(
+                        flexOptions.find((f) => f.type === "default")?.price ?? 2.99
+                      )}
+                      expandedPrice={toDisplay(
+                        flexOptions.find((f) => f.type === "expanded")?.price ?? 5.98
+                      )}
+                      currency={currency}
                       showBadges
                     />
                   </CardContent>
@@ -706,7 +740,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                       </span>
                     </span>
                     <span className="shrink-0 text-[17px] font-extrabold whitespace-nowrap text-navy">
-                      {selectedPrice?.total_price} €
+                      {selectedPrice ? fmt(selectedPrice.total_price) : "—"}
                     </span>
                     <ChevronDown className="size-5 shrink-0 text-navy-soft" />
                   </CardContent>
@@ -753,8 +787,13 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                       onEnabled={setFlexEnabled}
                       type={flexType}
                       onType={setFlexType}
-                      defaultPrice={flexOptions.find((f) => f.type === "default")?.price ?? 2.99}
-                      expandedPrice={flexOptions.find((f) => f.type === "expanded")?.price ?? 5.98}
+                      defaultPrice={toDisplay(
+                        flexOptions.find((f) => f.type === "default")?.price ?? 2.99
+                      )}
+                      expandedPrice={toDisplay(
+                        flexOptions.find((f) => f.type === "expanded")?.price ?? 5.98
+                      )}
+                      currency={currency}
                       showBadges
                     />
                     <label className="mt-4 flex cursor-pointer items-start gap-3 px-1">
@@ -818,8 +857,15 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                   <span className="text-lg font-semibold text-white">
                     Total · 1 vignette
                   </span>
-                  <span className="text-3xl font-extrabold text-white">{total} €</span>
+                  <span className="text-3xl font-extrabold text-white">{fmt(total)}</span>
                 </div>
+                {eurTotal !== null && (
+                  <p className="mt-1 px-1 text-right text-xs font-semibold text-white/75">
+                    Charged in euro: {formatPrice(eurTotal, "EUR")}. The{" "}
+                    {currency} amount is an estimate — your bank sets the final
+                    rate.
+                  </p>
+                )}
 
                 <Button
                   variant="mint"
@@ -970,14 +1016,17 @@ function FlexPanel({
   onType,
   defaultPrice,
   expandedPrice,
+  currency,
   showBadges,
 }: {
   enabled: boolean
   onEnabled: (v: boolean) => void
   type: "default" | "expanded"
   onType: (v: "default" | "expanded") => void
+  /** already converted into `currency` by the caller */
   defaultPrice: number
   expandedPrice: number
+  currency: string
   showBadges?: boolean
 }) {
   return (
@@ -1022,7 +1071,7 @@ function FlexPanel({
                 {label}
               </span>
               <span className="text-sm font-extrabold whitespace-nowrap text-navy">
-                {price} €
+                {formatPrice(price, currency)}
               </span>
             </ToggleGroupItem>
           ))}

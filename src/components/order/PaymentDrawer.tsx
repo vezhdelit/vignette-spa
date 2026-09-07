@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer"
 import { Spinner } from "@/components/ui/spinner"
 import { useInvalidateOrders, usePaymentStatus } from "@/queries/orders"
+import { notePurchaseCompleted } from "@/stores/rating"
 
 /**
  * In-sheet checkout: the payment page rendered in an iframe (it ships
@@ -118,10 +119,13 @@ export function PaymentDrawer({
   const invalidateOrders = useInvalidateOrders()
   const { paid } = usePaymentStatus(orderId, open)
 
+  // only reached once payment landed — the "after purchase" moment for the
+  // rating sheet (it opens on Home if the server says this account is due)
   const finish = () => {
     void invalidateOrders()
     onClose()
     navigate("/")
+    notePurchaseCompleted()
   }
 
   return (

@@ -7,12 +7,14 @@ import {
   BellRing,
   Car,
   ChevronDown,
+  ChevronRight,
   Coins,
   Copy,
   Gift,
   LogOut,
   MonitorSmartphone,
   ShieldCheck,
+  Star,
   TriangleAlert,
   UserRound,
   Wallet as WalletIcon,
@@ -53,6 +55,7 @@ import {
 } from "@/lib/social"
 import { webPushSupported } from "@/lib/webpush"
 import { useAuthStore } from "@/stores/auth"
+import { useRatingUiStore } from "@/stores/rating"
 import { CURRENCIES, isCurrency, useSettingsStore } from "@/stores/settings"
 import { useMe } from "@/queries/me"
 import { useSessionScope } from "@/queries/session"
@@ -117,6 +120,8 @@ export function AccountPage() {
       ) : (
         <SignedInSections />
       )}
+
+      <RateAppRow hasRated={me?.has_rated ?? false} />
 
       {!isGuest && <SignOutButtons />}
       <p className="pt-1 text-center text-xs font-medium text-white/60">
@@ -550,6 +555,35 @@ function CurrencyBody() {
         other currencies are estimates.
       </p>
     </div>
+  )
+}
+
+/**
+ * "Rate the app" — the manual door to the rating sheet, always available
+ * (guests included; re-rating is allowed server-side). Opening it here is
+ * not a prompt, so closing it unrated is not reported as a dismissal.
+ */
+function RateAppRow({ hasRated }: { hasRated: boolean }) {
+  const openSheet = useRatingUiStore((s) => s.openSheet)
+  return (
+    <Card className="gap-0 rounded-[24px] py-0 ring-0">
+      <button
+        type="button"
+        className="flex w-full items-center gap-3.5 p-4 text-left outline-none"
+        onClick={() => openSheet("manual")}
+      >
+        <span className="flex size-11 items-center justify-center rounded-2xl bg-sun/25">
+          <Star className="size-5.5 fill-sun text-sun" />
+        </span>
+        <span className="flex-1">
+          <span className="block text-[16px] font-extrabold text-navy">Rate the app</span>
+          <span className="block text-[13px] font-semibold text-navy-soft">
+            {hasRated ? "Thanks for rating — change your mind any time" : "Tell us how we're doing"}
+          </span>
+        </span>
+        <ChevronRight className="size-5 text-navy-soft" />
+      </button>
+    </Card>
   )
 }
 

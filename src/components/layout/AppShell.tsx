@@ -2,6 +2,7 @@ import { Link, Outlet } from "react-router-dom"
 import { Bell } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useNotificationsSummary } from "@/queries/account"
+import { RateAppSheet } from "@/components/rating/RateAppSheet"
 import { BottomNav } from "./BottomNav"
 
 export function Logo({ className }: { className?: string }) {
@@ -31,6 +32,8 @@ export function AppShell() {
       </main>
 
       <BottomNav />
+      {/* one instance app-wide; opened via stores/rating.ts */}
+      <RateAppSheet />
     </div>
   )
 }

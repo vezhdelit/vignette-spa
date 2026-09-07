@@ -29,6 +29,7 @@ import {
 import { Spinner } from "@/components/ui/spinner"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { DoneScreen, PaymentModal } from "@/components/order/PaymentDrawer"
+import { notePurchaseCompleted } from "@/stores/rating"
 import { productBadge, tileColor } from "@/components/vignettes/ProductCard"
 import {
   COUNTRY_NAMES,
@@ -322,10 +323,13 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
     }
   }
 
+  // called both after a successful payment and when the checkout is
+  // abandoned — only the former is a purchase the rating sheet may follow
   const finish = () => {
     void invalidateOrders()
     onClose()
     navigate("/")
+    if (paid) notePurchaseCompleted()
   }
 
   const closeGuard = (next: boolean) => {

@@ -95,6 +95,7 @@ client reads it synchronously to sign requests.
 | Wallet / referrals / vehicles | `GET wallet`, `referrals`, `vehicles` | Account sections (wallet/income are **integer cents**); `vehicles` is guest-ok — a guest gets the plates from its own orders, with string ids `"<country>:<plate>"` — and feeds the order sheet's saved-plate chips |
 | Notifications | `GET notifications?mark_read=true` (paginated; opening the inbox is what marks it read), `GET notifications/summary` (unread badge, polled every 60s), `POST notifications/:id/read`, `:id/unread`, `mark-all-read` | header bell → `/notifications` page; Account → Notifications section (same list) |
 | Consents | `GET`/`POST`/`DELETE consents` | Account → Partner access (grant/revoke) |
+| Rate the app | `has_rated` / `rate_prompt` on `GET /public/me`; `POST rating` (`{ rating, comment? }` → `store_review`), `POST rating/dismissed` | one sheet (`components/rating/RateAppSheet`, opened via `stores/rating.ts`): auto after a paid checkout while `rate_prompt` is `after_purchase`; Home "Enjoying vignette.id?" card while it is `anywhere` (its ✕ = dismissed); Account → "Rate the app" row any time (manual open, never reported as a dismissal). 4–5 stars continue to `VITE_APP_STORE_REVIEW_URL` when set. Both writes patch the cached `/me`, no refetch |
 | Apple Wallet | `GET apple-pass` | order card → ADD TO WALLET |
 | Catalog | `GET catalog/products`, `catalog/products/flex` | Vignettes tab / order sheet |
 

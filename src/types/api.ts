@@ -62,11 +62,31 @@ export interface SessionInfo {
 
 /* -------------------------------------------------------------------- me */
 
+/**
+ * Server verdict on the "rate the app" sheet — the server decides WHETHER,
+ * the app decides WHERE. `after_purchase`: never prompted, show once right
+ * after a checkout completes. `anywhere`: prompted before and closed without
+ * rating; any natural moment is fine. `none`: rated already, asked less than
+ * 14 days ago, or more than a year since the first prompt.
+ */
+export type RatePrompt = "none" | "after_purchase" | "anywhere"
+
 export interface Me {
   id: string
   email: string | null
   guest: boolean
   created_at: number | null
+  /** true from the first submitted rating on; never goes back */
+  has_rated: boolean
+  rate_prompt: RatePrompt
+}
+
+/** POST /public/me/rating and /rating/dismissed both answer the fresh flags. */
+export interface RatingState {
+  has_rated: boolean
+  rate_prompt: RatePrompt
+  /** rating call only — 4–5 stars: continue into the store review flow */
+  store_review?: boolean
 }
 
 export interface Wallet {

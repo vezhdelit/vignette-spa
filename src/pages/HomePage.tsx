@@ -14,6 +14,7 @@ import { useOrders } from "@/queries/orders"
 import { OrderCard } from "@/components/home/OrderCard"
 import { OrderCardSkeleton } from "@/components/home/OrderCardSkeleton"
 import { BuyNowCard } from "@/components/home/BuyNowCard"
+import { RateUsCard } from "@/components/home/RateUsCard"
 import { PaymentDrawer } from "@/components/order/PaymentDrawer"
 import type { Order } from "@/types/api"
 
@@ -65,6 +66,8 @@ export function HomePage() {
         <BuyNowCard onBuy={() => navigate("/vignettes")} />
       ) : (
         <>
+          {/* only while the server says rate_prompt: "anywhere" */}
+          <RateUsCard />
           {visible.map((order) => (
             <OrderCard key={order.id} order={order} onPay={setPaying} />
           ))}

@@ -6,7 +6,7 @@ import { useAuthStore } from "@/stores/auth"
  * Event analytics for the SPA — the browser half of the pipeline the panel
  * reads (vignette.id docs/analytics/partner-api.md).
  *
- * Events go straight to `POST /public/analytics/events` as this app's own
+ * Events go straight to the ingest endpoint as this app's own
  * public client: `X-Client-Id` identifies the partner, and the bearer token
  * the API already sends resolves `user_id` server-side. Unlike the Nuxt site
  * there is no server of ours in between, so nothing forwards a session
@@ -24,6 +24,15 @@ import { useAuthStore } from "@/stores/auth"
  *     each would be a request per click. Events queue and flush on a short
  *     timer, on page hide, and when the batch is full.
  */
+
+/**
+ * The quiet alias of /public/analytics/events. Identical endpoint, same
+ * controller — but ad blockers match "/analytics/" and a trailing "/events"
+ * as a matter of course, and a blocked request never reaches a server log to
+ * explain itself. Roughly a quarter of desktop traffic runs a blocker, and
+ * losing exactly the people who run one skews every number on the page.
+ */
+const INGEST_PATH = "/public/insights/records"
 
 const ANONYMOUS_KEY = "vignette_anonymous_id"
 const SESSION_KEY = "vignette_session_id"
@@ -232,7 +241,7 @@ const hasSession = (): boolean => {
 
 const send = (events: IngestEvent[]): void => {
   if (!events.length) return
-  void api("/public/analytics/events", {
+  void api(INGEST_PATH, {
     method: "POST",
     body: { sent_at: new Date().toISOString(), events },
     // With a session the bearer resolves user_id; without one this is an

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
 import {
@@ -13,6 +13,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
+import { track } from "@/lib/analytics"
 import { Card, CardContent } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer"
@@ -174,6 +175,9 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   const [promoError, setPromoError] = useState<string | null>(null)
   const [promoChecking, setPromoChecking] = useState(false)
   const [paymentLink, setPaymentLink] = useState<string | null>(null)
+  // Per opened sheet, not per render: how many plates this buyer tried
+  // before one was accepted.
+  const plateAttempts = useRef(0)
   // just the id — POST returns a slim stub; the poll fetches the full order
   const [createdOrder, setCreatedOrder] = useState<{ id: string } | null>(null)
 
@@ -196,6 +200,16 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   // reset per product/open
   useEffect(() => {
     if (open && product) {
+      track(
+        "product.viewed",
+        { product: product.name, country: product.country ?? null },
+        { product: product.name },
+      )
+      track(
+        "checkout.started",
+        { product: product.name, vehicles: 1 },
+        { product: product.name },
+      )
       setStep("order")
       setPeriod(periods[0] ?? null)
       setStartDate(dayStart(0))
@@ -429,6 +443,14 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
       if (invalid) {
         setPlateError(invalid.error?.message ?? t("plate.rejected"))
         setPlateErrorHint(invalid.hint ?? null)
+        // The count is what makes this readable: one rejection is a typo,
+        // four in a row is a country whose rules we have wrong.
+        plateAttempts.current += 1
+        track("checkout.plate_rejected", {
+          country: plateCountry,
+          reason: invalid.error?.type ?? "invalid_plate",
+          attempts: plateAttempts.current,
+        })
         return
       }
       const normalized = result.vehicles[0]?.plate
@@ -492,6 +514,17 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
         },
       })
       setCreatedOrder(result.orders[0] ?? null)
+      const created = result.orders[0] ?? null
+      track(
+        "order.created",
+        { product: product.name, amount_eur: eurTotal ?? total },
+        { product: product.name, ...(created?.id ? { order_id: created.id } : {}) },
+      )
+      track(
+        "checkout.payment_opened",
+        { amount_eur: eurTotal ?? total },
+        { product: product.name, ...(created?.id ? { order_id: created.id } : {}) },
+      )
       // shown in an in-sheet iframe (the pay page ships
       // `frame-ancestors *` exactly for this embedded-webview use)
       setPaymentLink(result.payment_link)

@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { Toaster } from "@/components/ui/sonner"
 import { AppShell } from "@/components/layout/AppShell"
+import { AnalyticsTracker } from "@/components/AnalyticsTracker"
 import { HomePage } from "@/pages/HomePage"
 import { VignettesPage } from "@/pages/VignettesPage"
 import { SupportPage } from "@/pages/SupportPage"
@@ -29,6 +30,7 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        <AnalyticsTracker />
         <Routes>
           <Route element={<AppShell />}>
             <Route path="/" element={<HomePage />} />

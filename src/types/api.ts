@@ -7,6 +7,8 @@ export interface ApiError {
   type: string
   message: string
   field?: string
+  /** promo_not_eligible only — which condition failed (e.g. "min_cars") */
+  reason?: string
 }
 
 export interface ApiEnvelope<T> {
@@ -199,6 +201,8 @@ export interface Order {
   partial_refund?: RefundAction
   /** CREATED (unpaid) orders only: the checkout URL — reopen it to finish paying */
   payment_link?: string
+  /** the one promo this order carries, or null (helpers/promo-rules.js#publicPromoView) */
+  promo?: OrderPromo | null
 }
 
 /**
@@ -248,6 +252,14 @@ export interface CreateOrderBody {
   open_order_details_by_default?: boolean
   email?: string
   installation_id?: string
+  /**
+   * A promo code the user typed, validated first with
+   * POST /public/me/promos/validate. Omit it and the server still applies the
+   * best auto-apply campaign the order qualifies for. The same `promo_*`
+   * errors as validate come back here (with `field: "promo_code"`) when the
+   * code stopped applying in between.
+   */
+  promo_code?: string
   /**
    * Driver-info products (e.g. Moldova): required when the selected period
    * carries "driver_info_required". Field names per
@@ -321,4 +333,225 @@ export interface FlexOption {
   enabled: boolean
   is_default: boolean
   is_partner_paid: boolean
+}
+
+/* ---------------------------------------------------------------- promos */
+
+/**
+ * The promo an order carries, or null. Always EUR: an order settles in EUR
+ * whatever the display currency is. `cashback_status` is `pending` until the
+ * order is paid, then `granted` (credited to wallet.bonuses), `reversed`
+ * after a full refund, or `skipped` when the buyer had no wallet.
+ */
+export interface OrderPromo {
+  code: string | null
+  name: string | null
+  /** one-liner like "-10% vignette, 2 € cashback" */
+  effect_summary: string | null
+  discount_eur: number
+  cashback_eur: number
+  cashback_status: "pending" | "granted" | "reversed" | "skipped" | null
+}
+
+/** The promo POST /public/me/promos/validate resolved for an order. */
+export interface PromoInfo {
+  code: string | null
+  name: string
+  kind: "shared" | "unique" | "auto" | string
+  effect_summary: string
+  /** true when no code was sent and the server picked an auto campaign */
+  auto: boolean
+}
+
+/** What the payment link will charge — EUR, whatever the display currency. */
+export interface PromoPricePreview {
+  subtotal_eur: number
+  discount_eur: number
+  pay_price_eur: number
+  currency: string
+}
+
+/**
+ * 200 from POST /public/me/promos/validate. A code that cannot be used is a
+ * 400 with a `promo_*` type instead; `valid: false` with `promo: null` is the
+ * "no auto campaign applies" answer to `code: null`.
+ */
+export interface PromoValidateResult {
+  valid: boolean
+  promo: PromoInfo | null
+  discount_eur: number
+  cashback_eur?: number
+  price_preview: PromoPricePreview
+}
+
+/** The order the promo is priced against — same shapes as POST /me/orders. */
+export interface PromoValidateProduct {
+  name: string
+  period: string
+  start_date: number
+  flex?: { type: "default" | "expanded"; enabled: boolean }
+}
+
+export interface PromoValidateBody {
+  /** null asks for the best auto-apply campaign instead of a typed code */
+  code: string | null
+  /** may be empty for a price-only preview before the plate is typed */
+  cars: { plate: string; country: string }[]
+  products: PromoValidateProduct[]
+  /** guests / anonymous installs: what per-user limits key on */
+  email?: string
+  installation_id?: string
+}
+
+/* --------------------------------------------------------------- vehicles */
+
+/**
+ * GET /public/vehicles/lookup — the registry behind a plate. Every field
+ * except plate/country may be null, and the keys are always present, so the
+ * shape never depends on which registry answered. `color`, `body_type` and
+ * `fuel_type` are lowercase snake_case English open enums — show a term we
+ * don't recognise as-is.
+ */
+export interface VehicleLookup {
+  plate: string
+  country: string
+  vin_code: string | null
+  brand: string | null
+  model: string | null
+  year: number | null
+  color: string | null
+  body_type: string | null
+  fuel_type: string | null
+  engine_capacity: number | null
+  own_weight: number | null
+  total_weight: number | null
+  category: string | null
+  registration_date: string | null
+}
+
+/**
+ * GET /public/vehicles/lookup/supported-countries — which plate countries
+ * resolve and which fields each can fill. Gate the "find my VIN" affordance
+ * on this instead of hardcoding `ua`.
+ */
+export interface VehicleLookupCountry {
+  country: string
+  fields: string[]
+}
+
+/** One row of POST /public/vehicles/validate. `plate` is the NORMALIZED plate. */
+export interface VehicleCheck {
+  plate: string | null
+  country: string | null
+  valid: boolean
+  /** whether GET /public/vehicles/lookup can resolve this plate's country */
+  lookup_supported?: boolean
+  /** invalid_format | invalid_country | invalid_plate | duplicate_vehicle */
+  error?: { type: string; message: string }
+  /**
+   * On a format failure: the customer's "why" (the manifest's explain /
+   * hint text, same as lib/plate-rules.ts#plateHintText builds). Absent for
+   * a short plate, an unknown country or a duplicate.
+   */
+  hint?: string | null
+}
+
+export interface VehiclesValidateResult {
+  /** true only when every vehicle passed */
+  valid: boolean
+  vehicles: VehicleCheck[]
+}
+
+/* ------------------------------------------------------------ plate rules */
+
+export interface PlateRuleError {
+  type: string
+  message: string
+}
+
+export interface PlateForbidRule {
+  /** stable across languages and versions — what a translation addresses */
+  id?: string
+  pattern: string
+  type: string
+  message: string
+}
+
+/** A string is a bare pattern; the object form only counts when no `unless` matches. */
+export type PlateAcceptRule = string | { pattern: string; unless: string[] }
+
+export interface PlateRuleSet {
+  forbid: PlateForbidRule[]
+  accept: PlateAcceptRule[]
+  message?: string
+}
+
+/**
+ * GET /public/vehicles/plate-rules — the plate rules as data, so a form can
+ * validate locally and only call POST /public/vehicles/validate at submit.
+ * It is the same file the server runs, so a matcher built from it returns the
+ * same verdict, error type and message (see lib/plate-rules.ts).
+ */
+export interface PlateRulesManifest {
+  version: string
+  /** the language every message in this copy is in (ISO 639-1) … */
+  language?: string
+  /** … and the languages the API can serve */
+  languages?: string[]
+  changelog?: string[]
+  readme?: string[]
+  default_message: string
+  /** "e.g. {examples}: {format}" — how a country's hint line is assembled */
+  hint_template?: string
+  normalize: {
+    steps: string[]
+    /** a regex character-class body, e.g. "0-9A-Za-zćčšž…-" */
+    allowed_characters: string
+    min_length: number
+    min_length_error: PlateRuleError
+  }
+  country: {
+    notes?: string[]
+    /** every country code the API accepts at all, lowercase ISO-3166-1 alpha-2 */
+    accepted: string[]
+    unknown_error: { type: string; message_template: string }
+  }
+  /** applies to an accepted country with no rules of its own (it, fr, rs, …) */
+  unlisted: { notes?: string | string[]; rules: PlateRuleSet }
+  countries: Record<
+    string,
+    {
+      /**
+       * Customer copy for under a rejected plate: `format` in plain words,
+       * `examples` in the issued style. A forbid message says what is wrong;
+       * this says what right looks like. Null where the file has none.
+       */
+      hint?: { format: string; examples: string[] } | null
+      /**
+       * Ordered positive expectations every valid plate of the country meets.
+       * Consulted only after the rules rejected a plate: the first one the
+       * normalized plate does NOT match is the reason to show — `message`
+       * may carry `{plate}` and `{length}`.
+       */
+      explain?: { id?: string; pattern: string; message: string }[]
+      notes?: string[]
+      /** informational — the names the rules were built from */
+      lists?: Record<string, string[]>
+      patterns?: Record<string, string>
+      rules: PlateRuleSet
+    }
+  >
+}
+
+export interface PlateRuleVector {
+  country: string
+  plate: string
+  valid: boolean
+  why?: string
+}
+
+/** GET /public/vehicles/plate-rules/vectors — conformance cases for the manifest. */
+export interface PlateRuleVectors {
+  version: string
+  vectors: PlateRuleVector[]
 }

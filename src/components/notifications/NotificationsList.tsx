@@ -6,6 +6,7 @@ import { Empty, EmptyDescription, EmptyHeader } from "@/components/ui/empty"
 import { Spinner } from "@/components/ui/spinner"
 import { apiErrorMessage } from "@/lib/api"
 import { formatDotDateTime } from "@/lib/format"
+import { useT } from "@/i18n"
 import { useSessionScope } from "@/queries/session"
 import {
   useMarkAllNotificationsRead,
@@ -27,6 +28,7 @@ import type { AppNotification } from "@/types/api"
  * guest's inbox is always empty anyway.
  */
 export function NotificationsList({ className }: { className?: string }) {
+  const { t } = useT()
   const { guest } = useSessionScope()
   const query = useNotifications({ markRead: true })
   const {
@@ -45,7 +47,7 @@ export function NotificationsList({ className }: { className?: string }) {
   if (query.isPending)
     return (
       <p className="flex items-center gap-2 py-2 text-sm font-semibold text-navy-soft">
-        <Spinner /> Loading…
+        <Spinner /> {t("common.loading")}
       </p>
     )
   if (query.error)
@@ -63,9 +65,7 @@ export function NotificationsList({ className }: { className?: string }) {
       <Empty className="border-0 p-1 py-1">
         <EmptyHeader>
           <EmptyDescription className="text-sm font-semibold text-navy-soft">
-            {guest
-              ? "Alerts are kept on an account — sign in to get payment and vignette updates here."
-              : "Nothing here yet — payment and vignette updates will show up here."}
+            {guest ? t("notifications.emptyGuest") : t("notifications.empty")}
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -81,7 +81,9 @@ export function NotificationsList({ className }: { className?: string }) {
     <div className={cn("space-y-2.5", className)}>
       <div className="flex items-center justify-between px-1">
         <p className="text-xs font-bold tracking-wider text-navy-soft uppercase">
-          {unreadCount > 0 ? `${unreadCount} unread · ${totalCount} total` : `${totalCount} total`}
+          {unreadCount > 0
+            ? t("notifications.counts", { unread: unreadCount, total: totalCount })
+            : t("notifications.countsAllRead", { total: totalCount })}
         </p>
         {!guest && unreadCount > 0 && (
           <Button
@@ -93,7 +95,9 @@ export function NotificationsList({ className }: { className?: string }) {
               markAll.mutate(undefined, {
                 onSuccess: (r) =>
                   toast.success(
-                    r.updated_count ? `Marked ${r.updated_count} as read` : "Already all read"
+                    r.updated_count
+                      ? t("notifications.markedRead", { count: r.updated_count })
+                      : t("notifications.alreadyRead")
                   ),
                 onError: (e) => toast.error(apiErrorMessage(e)),
               })
@@ -104,7 +108,7 @@ export function NotificationsList({ className }: { className?: string }) {
             ) : (
               <CheckCheck className="size-3.5" />
             )}
-            Mark all read
+            {t("notifications.markAllRead")}
           </Button>
         )}
       </div>
@@ -116,7 +120,13 @@ export function NotificationsList({ className }: { className?: string }) {
           onClick={() => toggle(n)}
           disabled={guest}
           aria-pressed={n.read}
-          title={guest ? undefined : n.read ? "Mark as unread" : "Mark as read"}
+          title={
+            guest
+              ? undefined
+              : n.read
+                ? t("notifications.markAsUnread")
+                : t("notifications.markAsRead")
+          }
           className={cn(
             "w-full rounded-2xl p-3 text-left transition-colors",
             n.read ? "bg-[#f6f8fa]" : "bg-brand-soft/50",
@@ -138,7 +148,9 @@ export function NotificationsList({ className }: { className?: string }) {
               <p className="mt-0.5 text-sm font-medium text-navy/80">{n.body}</p>
               <p className="mt-1 text-[11px] font-semibold text-navy-soft">
                 {formatDotDateTime(n.created_at)}
-                {n.read && n.read_at ? ` · read ${formatDotDateTime(n.read_at)}` : ""}
+                {n.read && n.read_at
+                  ? ` · ${t("notifications.readAt", { date: formatDotDateTime(n.read_at) })}`
+                  : ""}
               </p>
             </div>
           </div>
@@ -154,8 +166,11 @@ export function NotificationsList({ className }: { className?: string }) {
           onClick={() => void fetchNextPage()}
         >
           {isFetchingNextPage
-            ? "Loading…"
-            : `Load more (${pagination.current}/${pagination.total})`}
+            ? t("common.loading")
+            : t("common.loadMore", {
+                current: pagination.current,
+                total: pagination.total,
+              })}
         </Button>
       )}
     </div>

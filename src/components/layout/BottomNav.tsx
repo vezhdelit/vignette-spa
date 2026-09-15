@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom"
 import { House, MessageCircle, CircleUserRound } from "lucide-react"
+import { useT } from "@/i18n"
 import { cn } from "@/lib/utils"
 
 /** Motorway icon (road under a bridge) — lucide has no highway glyph. */
@@ -26,17 +27,18 @@ function MotorwayIcon({ className }: { className?: string }) {
 }
 
 const TABS = [
-  { to: "/", label: "Home", icon: House },
-  { to: "/vignettes", label: "Vignettes", icon: MotorwayIcon },
-  { to: "/support", label: "Support", icon: MessageCircle },
-  { to: "/account", label: "Account", icon: CircleUserRound },
+  { to: "/", key: "nav.home", icon: House },
+  { to: "/vignettes", key: "nav.vignettes", icon: MotorwayIcon },
+  { to: "/support", key: "nav.support", icon: MessageCircle },
+  { to: "/account", key: "nav.account", icon: CircleUserRound },
 ] as const
 
 export function BottomNav() {
+  const { t } = useT()
   return (
     <nav className="pointer-events-none fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-md px-4 pb-4">
       <div className="pointer-events-auto flex items-stretch justify-between rounded-[26px] bg-white px-4 py-2.5 shadow-[0_8px_30px_rgba(0,60,120,0.18)]">
-        {TABS.map(({ to, label, icon: Icon }) => (
+        {TABS.map(({ to, key, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
@@ -54,7 +56,7 @@ export function BottomNav() {
                   className={cn("size-6", isActive && to === "/" && "fill-pink")}
                 />
                 <span className="text-[10px] font-bold tracking-[0.12em] uppercase">
-                  {label}
+                  {t(key)}
                 </span>
               </>
             )}

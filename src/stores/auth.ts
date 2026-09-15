@@ -217,6 +217,12 @@ export const useAuthStore = create<AuthState>()(
 
 let guestInFlight: Promise<void> | null = null
 
+/**
+ * The name this session shows up as in Account → "Devices & sessions". NOT
+ * translated on purpose: the API stores it once, at session creation, and the
+ * same row is read from the user's other devices in whatever language those
+ * are set to — a device identifier, not copy.
+ */
 function deviceName(): string {
   const ua = navigator.userAgent
   if (/iPhone|iPad/.test(ua)) return "iPhone (web)"

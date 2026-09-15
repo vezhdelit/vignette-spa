@@ -1,6 +1,7 @@
 import { Link, Outlet } from "react-router-dom"
 import { Bell } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { useT } from "@/i18n"
 import { useNotificationsSummary } from "@/queries/account"
 import { RateAppSheet } from "@/components/rating/RateAppSheet"
 import { BottomNav } from "./BottomNav"
@@ -44,6 +45,7 @@ export function AppShell() {
  * inbox page, which is what marks things read.
  */
 function NotificationsBell() {
+  const { t } = useT()
   const unread = useNotificationsSummary().data?.unread_count ?? 0
   return (
     <Button
@@ -54,7 +56,9 @@ function NotificationsBell() {
     >
       <Link
         to="/notifications"
-        aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
+        aria-label={
+          unread > 0 ? t("bell.labelUnread", { count: unread }) : t("bell.label")
+        }
       >
         <Bell className="size-7 fill-white" />
         {unread > 0 && (

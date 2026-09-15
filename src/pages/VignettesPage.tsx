@@ -14,6 +14,7 @@ import {
   EmptyHeader,
 } from "@/components/ui/empty"
 import { apiErrorMessage } from "@/lib/api"
+import { useT } from "@/i18n"
 import { EMPTY_CATALOG, productsFor, useCatalog } from "@/queries/catalog"
 import { CountryCarousel } from "@/components/vignettes/CountryCarousel"
 import {
@@ -24,6 +25,7 @@ import { OrderSheet } from "@/components/order/OrderSheet"
 import type { CatalogProduct } from "@/types/api"
 
 export function VignettesPage() {
+  const { t } = useT()
   const catalogQuery = useCatalog()
   const catalog = catalogQuery.data ?? EMPTY_CATALOG
   const loaded = catalogQuery.isSuccess
@@ -77,13 +79,13 @@ export function VignettesPage() {
         ) : catalogQuery.isError ? (
           <Alert variant="destructive" className="rounded-[28px] border-0 bg-white/90">
             <TriangleAlert />
-            <AlertTitle className="font-bold">Couldn't load the catalog</AlertTitle>
+            <AlertTitle className="font-bold">{t("catalog.loadErrorTitle")}</AlertTitle>
             <AlertDescription className="font-medium text-navy-soft">
-              {apiErrorMessage(catalogQuery.error, "Failed to load catalog")}
+              {apiErrorMessage(catalogQuery.error, t("catalog.loadErrorBody"))}
             </AlertDescription>
             <AlertAction>
               <Button variant="brand" size="sm" onClick={() => void catalogQuery.refetch()}>
-                Retry
+                {t("common.retry")}
               </Button>
             </AlertAction>
           </Alert>
@@ -91,7 +93,7 @@ export function VignettesPage() {
           <Empty className="border-0 pt-8">
             <EmptyHeader>
               <EmptyDescription className="font-semibold text-white/90">
-                No vignettes available for this country yet.
+                {t("catalog.empty")}
               </EmptyDescription>
             </EmptyHeader>
           </Empty>

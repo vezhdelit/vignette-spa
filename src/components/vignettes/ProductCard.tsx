@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { COUNTRY_NAMES, FlagRect } from "@/lib/countries"
+import { countryLabel, FlagRect } from "@/lib/countries"
+import { useT, type MessageKey } from "@/i18n"
 import type { CatalogProduct, ProductRestrictions } from "@/types/api"
 
 /** Products carry CSS color words ("blue", "yellow") — map to the pastel tile look. */
@@ -32,14 +33,14 @@ export function tileColor(color: string | null): string {
 
 const RESTRICTION_META: {
   key: keyof ProductRestrictions
-  label: string
+  label: MessageKey
   icon: React.ComponentType<{ className?: string }>
 }[] = [
-  { key: "height", label: "Height", icon: MoveVertical },
-  { key: "weight", label: "Weight", icon: Weight },
-  { key: "seats", label: "Seats", icon: Users },
-  { key: "width", label: "Width", icon: MoveHorizontal },
-  { key: "direction", label: "Direction", icon: ArrowLeftRight },
+  { key: "height", label: "product.restriction.height", icon: MoveVertical },
+  { key: "weight", label: "product.restriction.weight", icon: Weight },
+  { key: "seats", label: "product.restriction.seats", icon: Users },
+  { key: "width", label: "product.restriction.width", icon: MoveHorizontal },
+  { key: "direction", label: "product.restriction.direction", icon: ArrowLeftRight },
 ]
 
 /** "Vignette 2A" → "2A"; falls back to the raw vehicle_type ("car"/"van") */
@@ -55,11 +56,11 @@ export function ProductCard({
   product: CatalogProduct
   onSelect: () => void
 }) {
+  const { t } = useT()
   const restrictions = RESTRICTION_META.filter(
     (r) => product.restrictions?.[r.key]
   )
-  const countryName =
-    COUNTRY_NAMES[product.country] || product.country.toUpperCase()
+  const countryName = countryLabel(product.country)
   const badge = productBadge(product)
 
   return (
@@ -93,12 +94,12 @@ export function ProductCard({
             {product.title}
           </h3>
           <p className="mt-1 text-xs font-bold tracking-[0.15em] text-navy-soft/80 uppercase">
-            Restrictions
+            {t("product.restrictions")}
           </p>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             {restrictions.length === 0 ? (
               <span className="text-sm font-semibold text-navy-soft">
-                No vehicle restrictions
+                {t("product.noRestrictions")}
               </span>
             ) : (
               restrictions.map(({ key, label, icon: Icon }) => (
@@ -110,7 +111,7 @@ export function ProductCard({
                   <Icon className="size-3.5 shrink-0 text-navy-soft" />
                   <span className="flex flex-col leading-tight">
                     <span className="text-[10px] font-extrabold tracking-wider whitespace-nowrap text-navy uppercase">
-                      {label}
+                      {t(label)}
                     </span>
                     <span className="text-xs font-extrabold whitespace-nowrap text-pink">
                       {product.restrictions?.[key]}
@@ -125,7 +126,7 @@ export function ProductCard({
 
       <CardFooter className="border-t-0 bg-transparent pt-0">
         <Button variant="brand" size="xl" className="h-13 w-full text-lg" onClick={onSelect}>
-          Select
+          {t("product.select")}
         </Button>
       </CardFooter>
     </Card>

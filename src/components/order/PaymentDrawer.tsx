@@ -4,6 +4,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer"
 import { Spinner } from "@/components/ui/spinner"
+import { useT } from "@/i18n"
 import { useInvalidateOrders, usePaymentStatus } from "@/queries/orders"
 import { notePurchaseCompleted } from "@/stores/rating"
 
@@ -20,6 +21,7 @@ export function PaymentModal({
   paymentLink: string | null
   onClose: () => void
 }) {
+  const { t } = useT()
   return (
     <div className="flex h-[90dvh] flex-col">
       <div className="flex items-center justify-between px-4 pt-1 pb-3">
@@ -27,7 +29,7 @@ export function PaymentModal({
           variant="white"
           size="icon-lg"
           onClick={onClose}
-          aria-label="Close payment"
+          aria-label={t("payment.closeLabel")}
           className="size-10 rounded-full"
         >
           <X className="size-5" />
@@ -39,7 +41,7 @@ export function PaymentModal({
               href={paymentLink}
               target="_blank"
               rel="noreferrer"
-              aria-label="Open payment page in browser"
+              aria-label={t("payment.openInBrowser")}
             >
               <ExternalLink className="size-4.5" />
             </a>
@@ -52,7 +54,7 @@ export function PaymentModal({
       {paymentLink ? (
         <iframe
           src={paymentLink}
-          title="Payment"
+          title={t("payment.frameTitle")}
           allow="payment *; clipboard-write"
           className="w-full flex-1 rounded-t-[20px] border-0 bg-white"
         />
@@ -64,13 +66,14 @@ export function PaymentModal({
 
       <p className="flex items-center justify-center gap-2 px-4 py-2.5 text-center text-xs font-semibold text-white/85">
         <Spinner className="size-3" />
-        Waiting for the payment — you'll be redirected automatically
+        {t("payment.waiting")}
       </p>
     </div>
   )
 }
 
 export function DoneScreen({ onFinish }: { onFinish: () => void }) {
+  const { t } = useT()
   return (
     <div className="flex min-h-[86dvh] flex-col px-5 pb-6">
       <div className="flex flex-1 flex-col items-center justify-center gap-6 text-center">
@@ -78,21 +81,22 @@ export function DoneScreen({ onFinish }: { onFinish: () => void }) {
           <Check className="size-14 text-white" strokeWidth={3} />
         </span>
         <div>
-          <p className="text-[26px] font-extrabold text-white">Payment received</p>
+          <p className="text-[26px] font-extrabold text-white">
+            {t("payment.receivedTitle")}
+          </p>
           <p className="mt-2 text-[17px] font-medium text-white/90">
-            Payment has been successfully accepted and will be processed within
-            the next 3–5 minutes.
+            {t("payment.receivedBody")}
           </p>
         </div>
         <Alert className="rounded-2xl border-0 bg-pink text-left text-white [&>svg]:text-white">
           <TriangleAlert className="size-6" />
           <AlertDescription className="text-[15px] font-bold text-white">
-            Driving without an active vignette will result in a FINE TICKET
+            {t("payment.fineWarning")}
           </AlertDescription>
         </Alert>
       </div>
       <Button variant="mint" size="xl" className="w-full text-lg tracking-[0.2em]" onClick={onFinish}>
-        Go to my vignettes
+        {t("payment.goToVignettes")}
       </Button>
     </div>
   )
@@ -116,6 +120,7 @@ export function PaymentDrawer({
   onClose: () => void
 }) {
   const navigate = useNavigate()
+  const { t } = useT()
   const invalidateOrders = useInvalidateOrders()
   const { paid } = usePaymentStatus(orderId, open)
 
@@ -134,7 +139,7 @@ export function PaymentDrawer({
       onOpenChange={(next) => !next && (paid ? finish() : onClose())}
     >
       <DrawerContent className="border-0 !bg-brand data-[vaul-drawer-direction=bottom]:max-h-[94dvh] data-[vaul-drawer-direction=bottom]:rounded-t-[26px]">
-        <DrawerTitle className="sr-only">Complete payment</DrawerTitle>
+        <DrawerTitle className="sr-only">{t("orderCard.completePayment")}</DrawerTitle>
         {paid ? (
           <DoneScreen onFinish={finish} />
         ) : (

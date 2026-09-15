@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/drawer"
 import { Textarea } from "@/components/ui/textarea"
 import { apiErrorMessage } from "@/lib/api"
+import { useT, type MessageKey } from "@/i18n"
 import { useMe } from "@/queries/me"
 import { useDismissRatePrompt, useSubmitRating } from "@/queries/rating"
 import { useRatingUiStore } from "@/stores/rating"
@@ -23,7 +24,15 @@ import { cn } from "@/lib/utils"
  */
 const STORE_REVIEW_URL: string = import.meta.env.VITE_APP_STORE_REVIEW_URL || ""
 
-const STAR_LABELS = ["", "Terrible", "Poor", "Okay", "Good", "Excellent"]
+// indexed by the score, so [0] is never read
+const STAR_LABELS: MessageKey[] = [
+  "rate.star1",
+  "rate.star1",
+  "rate.star2",
+  "rate.star3",
+  "rate.star4",
+  "rate.star5",
+]
 const MAX_COMMENT = 2000
 
 /**
@@ -37,6 +46,7 @@ const MAX_COMMENT = 2000
  * to `anywhere` (and starts the 14-day cooldown).
  */
 export function RateAppSheet() {
+  const { t } = useT()
   const { open, source, purchaseTick, openSheet, closeSheet } = useRatingUiStore()
   const { data: me } = useMe()
   const submit = useSubmitRating()
@@ -82,7 +92,7 @@ export function RateAppSheet() {
       setThanks({ storeReview: Boolean(state.store_review) })
     } catch (e) {
       // 400 messages are written for the user — show them as they are
-      toast.error(apiErrorMessage(e, "Couldn't send your rating"))
+      toast.error(apiErrorMessage(e, t("rate.failed")))
     }
   }
 
@@ -98,28 +108,28 @@ export function RateAppSheet() {
             </span>
             <DrawerHeader className="p-0">
               <DrawerTitle className="text-[22px] font-extrabold text-white">
-                Thank you!
+                {t("rate.thanksTitle")}
               </DrawerTitle>
               <DrawerDescription className="text-[15px] font-medium text-white/90">
                 {thanks.storeReview && STORE_REVIEW_URL
-                  ? "Glad you like it. A public review helps other drivers find us — it takes a minute."
-                  : "Your feedback goes straight to the team that builds the app."}
+                  ? t("rate.thanksStore")
+                  : t("rate.thanksBody")}
               </DrawerDescription>
             </DrawerHeader>
             {thanks.storeReview && STORE_REVIEW_URL ? (
               <>
                 <Button asChild variant="mint" size="xl" className="w-full text-lg tracking-[0.15em]">
                   <a href={STORE_REVIEW_URL} target="_blank" rel="noreferrer" onClick={finish}>
-                    Write a review
+                    {t("rate.writeReview")}
                   </a>
                 </Button>
                 <Button variant="glass" size="pill" className="w-full" onClick={finish}>
-                  Maybe later
+                  {t("rate.maybeLater")}
                 </Button>
               </>
             ) : (
               <Button variant="mint" size="xl" className="w-full text-lg tracking-[0.15em]" onClick={finish}>
-                Done
+                {t("common.done")}
               </Button>
             )}
           </div>
@@ -127,17 +137,17 @@ export function RateAppSheet() {
           <div className="flex flex-col gap-4 px-5 pt-3 pb-6">
             <DrawerHeader className="p-0">
               <DrawerTitle className="text-[22px] font-extrabold text-white">
-                How do you like vignette.id?
+                {t("rate.title")}
               </DrawerTitle>
               <DrawerDescription className="text-[15px] font-medium text-white/85">
-                Tap the stars. A word or two on what to improve is welcome.
+                {t("rate.subtitle")}
               </DrawerDescription>
             </DrawerHeader>
 
             <div
               className="flex justify-center gap-2"
               role="radiogroup"
-              aria-label="Rating"
+              aria-label={t("rate.label")}
               onMouseLeave={() => setHover(0)}
             >
               {[1, 2, 3, 4, 5].map((value) => (
@@ -146,7 +156,7 @@ export function RateAppSheet() {
                   type="button"
                   role="radio"
                   aria-checked={rating === value}
-                  aria-label={`${value} star${value > 1 ? "s" : ""}`}
+                  aria-label={t("rate.starLabel", { count: value })}
                   onMouseEnter={() => setHover(value)}
                   onClick={() => setRating(value)}
                   className="rounded-full p-1 outline-none transition-transform active:scale-90 focus-visible:ring-3 focus-visible:ring-white/60"
@@ -162,13 +172,13 @@ export function RateAppSheet() {
               ))}
             </div>
             <p className="-mt-1 h-5 text-center text-sm font-bold text-white/90">
-              {shown ? STAR_LABELS[shown] : " "}
+              {shown ? t(STAR_LABELS[shown]) : " "}
             </p>
 
             <Textarea
               value={comment}
               onChange={(e) => setComment(e.target.value.slice(0, MAX_COMMENT))}
-              placeholder="What could be better? (optional)"
+              placeholder={t("rate.commentPlaceholder")}
               rows={3}
               className="rounded-2xl border-0 bg-white px-4 py-3 text-[15px] font-medium text-navy placeholder:text-navy-soft"
             />
@@ -180,10 +190,10 @@ export function RateAppSheet() {
               disabled={!rating || submit.isPending}
               onClick={() => void send()}
             >
-              {submit.isPending ? "Sending…" : "Send rating"}
+              {submit.isPending ? t("common.sending") : t("rate.send")}
             </Button>
             <Button variant="glass" size="pill" className="w-full" onClick={close}>
-              Not now
+              {t("common.notNow")}
             </Button>
           </div>
         )}

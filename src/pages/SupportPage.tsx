@@ -1,37 +1,47 @@
 import { Mail, MessageCircle, Globe, ChevronRight } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
+import { useT, type MessageKey } from "@/i18n"
 
-const CHANNELS = [
+// A channel's subtitle is a key only where it is prose — an address is not
+// translated, so those carry a literal instead.
+const CHANNELS: {
+  icon: typeof Mail
+  title: MessageKey
+  subtitle?: MessageKey
+  literal?: string
+  href: string
+}[] = [
   {
     icon: Mail,
-    title: "Email us",
-    subtitle: "support@vignette.id",
+    title: "support.email",
+    literal: "support@vignette.id",
     href: "mailto:support@vignette.id",
   },
   {
     icon: MessageCircle,
-    title: "Telegram",
-    subtitle: "Fastest replies, 24/7",
+    title: "support.telegram",
+    subtitle: "support.telegramNote",
     href: "https://t.me/vignetteid",
   },
   {
     icon: Globe,
-    title: "Help center",
-    subtitle: "vignette.id",
+    title: "support.helpCenter",
+    literal: "vignette.id",
     href: "https://vignette.id",
   },
 ]
 
 export function SupportPage() {
+  const { t } = useT()
   return (
     <div className="pt-2">
-      <h1 className="px-1 text-[26px] font-extrabold text-white">Support</h1>
+      <h1 className="px-1 text-[26px] font-extrabold text-white">{t("support.title")}</h1>
       <p className="mt-1 px-1 text-[15px] font-medium text-white/85">
-        Questions about an order, a refund or a fine? We're here to help.
+        {t("support.intro")}
       </p>
 
       <div className="mt-5 space-y-3">
-        {CHANNELS.map(({ icon: Icon, title, subtitle, href }) => (
+        {CHANNELS.map(({ icon: Icon, title, subtitle, literal, href }) => (
           <a
             key={title}
             href={href}
@@ -45,9 +55,11 @@ export function SupportPage() {
                   <Icon className="size-6 text-brand" />
                 </span>
                 <span className="flex-1">
-                  <span className="block text-[17px] font-extrabold text-navy">{title}</span>
+                  <span className="block text-[17px] font-extrabold text-navy">
+                    {t(title)}
+                  </span>
                   <span className="block text-sm font-semibold text-navy-soft">
-                    {subtitle}
+                    {subtitle ? t(subtitle) : literal}
                   </span>
                 </span>
                 <ChevronRight className="size-5 text-navy-soft" />
@@ -58,8 +70,7 @@ export function SupportPage() {
       </div>
 
       <p className="mt-6 px-1 text-center text-[13px] font-medium text-white/70">
-        When writing about an order, include the plate number and the order id —
-        you'll find both on the Home tab.
+        {t("support.footer")}
       </p>
     </div>
   )

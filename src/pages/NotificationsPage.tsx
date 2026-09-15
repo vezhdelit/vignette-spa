@@ -3,6 +3,7 @@ import { ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { NotificationsList } from "@/components/notifications/NotificationsList"
+import { useT } from "@/i18n"
 import { useSessionScope } from "@/queries/session"
 
 /**
@@ -12,6 +13,7 @@ import { useSessionScope } from "@/queries/session"
  */
 export function NotificationsPage() {
   const navigate = useNavigate()
+  const { t } = useT()
   const { guest } = useSessionScope()
 
   return (
@@ -20,22 +22,24 @@ export function NotificationsPage() {
         <Button
           variant="ghost"
           size="icon-lg"
-          aria-label="Back"
+          aria-label={t("common.back")}
           className="text-white hover:bg-white/15 hover:text-white active:scale-95"
           onClick={() => (window.history.length > 1 ? navigate(-1) : navigate("/"))}
         >
           <ArrowLeft className="size-6" />
         </Button>
-        <h1 className="text-[26px] font-extrabold text-white">Notifications</h1>
+        <h1 className="text-[26px] font-extrabold text-white">
+          {t("notifications.title")}
+        </h1>
       </div>
 
       {guest && (
         <p className="px-1 text-sm font-semibold text-white/85">
-          Alerts are kept on your account.{" "}
+          {t("notifications.guestNote")}{" "}
           <Link to="/account" className="underline underline-offset-2">
-            Sign in
+            {t("common.signIn")}
           </Link>{" "}
-          to receive payment and vignette updates here.
+          {t("notifications.guestNoteSuffix")}
         </p>
       )}
 

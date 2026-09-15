@@ -1,3 +1,4 @@
+import { countryName, currentLanguage } from "@/i18n"
 import { cn } from "@/lib/utils"
 
 /** Countries vignette.id sells vignettes for, in carousel order. */
@@ -13,7 +14,12 @@ export const VIGNETTE_COUNTRIES = [
   "md",
 ] as const
 
-export const COUNTRY_NAMES: Record<string, string> = {
+/**
+ * English names, used only as the fallback for a browser whose `Intl` has no
+ * data for a region — the displayed name comes from `countryLabel()`, which
+ * asks `Intl.DisplayNames` in the active UI language.
+ */
+const COUNTRY_NAMES_EN: Record<string, string> = {
   at: "Austria",
   ch: "Switzerland",
   si: "Slovenia",
@@ -36,6 +42,20 @@ export const COUNTRY_NAMES: Record<string, string> = {
   md: "Moldova",
   gb: "United Kingdom",
   es: "Spain",
+}
+
+/** A country's name in the active UI language ("Austria" / "Österreich"). */
+export function countryLabel(code: string | null | undefined): string {
+  if (!code) return "—"
+  const lower = code.toLowerCase()
+  return countryName(lower, COUNTRY_NAMES_EN[lower] ?? code.toUpperCase())
+}
+
+/** Every country this app can name, ordered by its name in the active language. */
+export function countryOptions(): string[] {
+  return Object.keys(COUNTRY_NAMES_EN).sort((a, b) =>
+    countryLabel(a).localeCompare(countryLabel(b), currentLanguage())
+  )
 }
 
 /** Countries offered in the registration-plate selector. */
@@ -201,7 +221,7 @@ export function Flag({ code, className }: { code: string; className?: string }) 
     <span
       className={cn("block shrink-0 overflow-hidden", className)}
       role="img"
-      aria-label={COUNTRY_NAMES[lower] || lower.toUpperCase()}
+      aria-label={countryLabel(lower)}
     >
       {stripes ? <StripeSvg {...stripes} /> : <SpecialSvg code={lower} />}
     </span>

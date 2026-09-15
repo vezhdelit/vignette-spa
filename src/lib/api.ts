@@ -1,3 +1,4 @@
+import { t } from "@/i18n"
 import type { ApiEnvelope, ApiError, TokenPayload } from "@/types/api"
 
 /**
@@ -26,6 +27,8 @@ export class ApiRequestError extends Error {
   status: number
   /** seconds, from the Retry-After header on 429s */
   retryAfter?: number
+  /** promo_not_eligible: which condition failed (e.g. "min_cars") */
+  reason?: string
 
   constructor(status: number, error: ApiError | null, retryAfter?: number) {
     super(error?.message || `Request failed (${status})`)
@@ -33,16 +36,20 @@ export class ApiRequestError extends Error {
     this.status = status
     this.type = error?.type || "unknown_error"
     this.field = error?.field
+    this.reason = error?.reason
     this.retryAfter = retryAfter
   }
 }
 
 /** What to show a user for a failed request — surfaces Retry-After on 429s. */
-export function apiErrorMessage(e: unknown, fallback = "Something went wrong"): string {
+export function apiErrorMessage(e: unknown, fallback?: string): string {
   if (e instanceof ApiRequestError) {
-    return e.retryAfter ? `${e.message} — try again in ${e.retryAfter}s` : e.message
+    // the API writes its messages in the language we asked it for
+    return e.retryAfter
+      ? t("common.retryIn", { message: e.message, seconds: e.retryAfter })
+      : e.message
   }
-  return e instanceof Error ? e.message : fallback
+  return e instanceof Error ? e.message : (fallback ?? t("common.somethingWrong"))
 }
 
 function retryAfterSeconds(res: Response): number | undefined {

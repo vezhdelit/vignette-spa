@@ -1,3 +1,4 @@
+import { t } from "@/i18n"
 /**
  * Web SDK glue for Apple/Google sign-in (the id_token/identity_token exchange
  * against POST /public/auth/{apple,google}/verify — not a redirect flow).
@@ -133,7 +134,7 @@ export async function initAppleSignIn(nonce: string): Promise<void> {
 export function signInWithApple(): Promise<string | null> {
   if (!window.AppleID?.auth) {
     return Promise.reject(
-      new Error("Apple sign-in is still loading — try again in a moment")
+      new Error(t("account.signIn.appleLoading"))
     )
   }
   return window.AppleID.auth

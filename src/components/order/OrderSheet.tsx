@@ -29,10 +29,13 @@ import {
 import { Spinner } from "@/components/ui/spinner"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { DoneScreen, PaymentModal } from "@/components/order/PaymentDrawer"
+import { PromoCodeInput } from "@/components/order/PromoCodeInput"
+import { VehicleLookupRow } from "@/components/order/VehicleLookup"
 import { notePurchaseCompleted } from "@/stores/rating"
 import { productBadge, tileColor } from "@/components/vignettes/ProductCard"
 import {
-  COUNTRY_NAMES,
+  countryLabel,
+  countryOptions,
   Flag,
   FlagCircle,
   FlagRect,
@@ -46,7 +49,9 @@ import {
   formatPrice,
   periodLabel,
 } from "@/lib/format"
-import { ApiRequestError } from "@/lib/api"
+import { useT, type MessageKey } from "@/i18n"
+import { ApiRequestError, apiErrorMessage } from "@/lib/api"
+import { plateErrorText, plateHintText } from "@/lib/plate-rules"
 import { isValidVin } from "@/lib/vehicle"
 import { getInstallationId } from "@/lib/webpush"
 import { useAuthStore } from "@/stores/auth"
@@ -65,8 +70,29 @@ import {
   useInvalidateOrders,
   usePaymentStatus,
 } from "@/queries/orders"
+import {
+  isPromoError,
+  useAutoPromo,
+  validatePromo,
+  type PromoValidateInput,
+} from "@/queries/promos"
+import {
+  firstInvalid,
+  usePlateRules,
+  usePlateValidator,
+  useValidateVehicles,
+} from "@/queries/vehicles"
 import { cn } from "@/lib/utils"
-import type { CatalogProduct } from "@/types/api"
+import type { CatalogProduct, PromoValidateResult } from "@/types/api"
+
+/** The API sends restriction keys, not labels — same set as the product card. */
+const RESTRICTION_KEYS: Record<string, MessageKey> = {
+  height: "product.restriction.height",
+  weight: "product.restriction.weight",
+  seats: "product.restriction.seats",
+  width: "product.restriction.width",
+  direction: "product.restriction.direction",
+}
 
 // "paying" covers the success screen too: it shows once the polled order
 // leaves CREATED (see `paid` below), no extra state transition needed
@@ -93,6 +119,7 @@ const FIELD =
 
 export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderSheetProps) {
   const navigate = useNavigate()
+  const { t } = useT()
   const queryClient = useQueryClient()
   const isGuest = useAuthStore((s) => s.user?.guest ?? true)
   const { data: me } = useMe()
@@ -107,6 +134,11 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   const eurCatalog = useCatalog("EUR").data ?? EMPTY_CATALOG
   const createOrder = useCreateOrder()
   const invalidateOrders = useInvalidateOrders()
+  // the plate rules as data (GET /public/vehicles/plate-rules) — the form
+  // validates locally and only asks the server at the step boundary
+  const plateRules = usePlateRules().data
+  const checkPlateLocally = usePlateValidator()
+  const validateVehicles = useValidateVehicles()
 
   const [step, setStep] = useState<Step>("order")
   const [plate, setPlate] = useState("")
@@ -127,6 +159,20 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
     passport_country: "ua",
   })
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null)
+  // the server's own verdict on the plate (POST /public/vehicles/validate),
+  // asked once when leaving step 1 — distinct from the local rules check
+  const [plateError, setPlateError] = useState<string | null>(null)
+  // the "why" the server sent with that verdict (row.hint) — the local
+  // manifest builds the same text, but the server's copy is the authority
+  // when the two disagree
+  const [plateErrorHint, setPlateErrorHint] = useState<string | null>(null)
+  // promo: `promoCode` is what is typed, `appliedCode` what is being priced
+  // (an effect below re-prices it whenever the order changes underneath it)
+  const [promoCode, setPromoCode] = useState("")
+  const [appliedCode, setAppliedCode] = useState<string | null>(null)
+  const [promo, setPromo] = useState<PromoValidateResult | null>(null)
+  const [promoError, setPromoError] = useState<string | null>(null)
+  const [promoChecking, setPromoChecking] = useState(false)
   const [paymentLink, setPaymentLink] = useState<string | null>(null)
   // just the id — POST returns a slim stub; the poll fetches the full order
   const [createdOrder, setCreatedOrder] = useState<{ id: string } | null>(null)
@@ -156,6 +202,11 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
       setPaymentLink(null)
       setCreatedOrder(null)
       setDuplicateWarning(null)
+      setPlateError(null)
+      setPromoCode("")
+      setAppliedCode(null)
+      setPromo(null)
+      setPromoError(null)
       setFlexEnabled(true)
       // read, not subscribed: a catalog refetch mid-order must not reset the form
       setFlexType(
@@ -185,6 +236,82 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   // watch the created order while the user pays in the in-sheet iframe —
   // polled every 4s until it leaves CREATED, which swaps in the success screen
   const { paid } = usePaymentStatus(createdOrder?.id ?? null, step === "paying")
+
+  /**
+   * The order a promo is priced against — the same `cars` / `products` shapes
+   * the purchase sends (a TODAY order included: midnight is already in the
+   * past by then and the pipeline answers `invalid_start_date`), so what
+   * validate quotes is what the payment link will charge. Memoised, so the
+   * identity — and with it the cached preview and the re-pricing below —
+   * only changes when the order does; the email joins in only once it's
+   * plausible, so typing it can't re-price per keystroke.
+   */
+  const promoInput: PromoValidateInput | null = useMemo(() => {
+    if (!product || !period) return null
+    const typedPlate = plate.trim()
+    const typedEmail = email.trim()
+    return {
+      code: null,
+      cars:
+        typedPlate.length >= 3 ? [{ plate: typedPlate, country: plateCountry }] : [],
+      products: [
+        {
+          name: product.name,
+          period,
+          start_date:
+            startDate === dayStart(0) ? Math.floor(Date.now() / 1000) : startDate,
+          flex: { type: flexType, enabled: flexEnabled },
+        },
+      ],
+      ...(/.+@.+\..+/.test(typedEmail) ? { email: typedEmail } : {}),
+    }
+  }, [product, period, plate, plateCountry, startDate, flexType, flexEnabled, email])
+
+  // What the server would apply on its own (no code). Only asked on the
+  // confirm step, and cached per order shape — the endpoint is rate-limited.
+  const autoPromoQuery = useAutoPromo(promoInput, {
+    enabled: step === "confirm" && !appliedCode,
+  })
+  const autoPromo = autoPromoQuery.data?.valid ? autoPromoQuery.data : null
+
+  /**
+   * Prices the applied code against the order as it stands. Runs on apply and
+   * again whenever the order changes underneath it (period, date, flex,
+   * plate): a code that no longer applies is dropped here rather than
+   * failing at checkout, with the server's own message.
+   */
+  useEffect(() => {
+    if (!appliedCode || !promoInput) {
+      setPromo(null)
+      return
+    }
+    let cancelled = false
+    setPromoChecking(true)
+    validatePromo({ ...promoInput, code: appliedCode })
+      .then((result) => {
+        if (cancelled) return
+        if (result.valid) {
+          setPromo(result)
+          setPromoError(null)
+        } else {
+          setPromo(null)
+          setAppliedCode(null)
+          setPromoError(t("promo.notApplicable"))
+        }
+      })
+      .catch((error) => {
+        if (cancelled) return
+        setPromo(null)
+        setAppliedCode(null)
+        setPromoError(apiErrorMessage(error, t("promo.checkFailed")))
+      })
+      .finally(() => {
+        if (!cancelled) setPromoChecking(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [appliedCode, promoInput])
 
   const selectedPrice = product && period ? product.price[period] : null
   const vinRequired =
@@ -235,10 +362,28 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   const isTomorrow = startDate === dayStart(1)
   const emailValid = /.+@.+\..+/.test(email)
 
-  // plates must be ≥3 chars with a country (helpers/vehicle.js#checkCars);
-  // per-country patterns stay server-side and surface via the API error
+  // The plate under this country's own format rules, run locally from the
+  // manifest — same verdict, type and message as the server (lib/plate-rules
+  // .ts). Null while the manifest hasn't loaded: then there is no local
+  // opinion and the server has the only say.
+  const plateVerdict = checkPlateLocally(plate, plateCountry)
+  const localPlateError =
+    plateRules &&
+    plateVerdict &&
+    !plateVerdict.valid &&
+    plate.trim().length >= plateRules.normalize.min_length
+      ? plateErrorText(plateRules, plateVerdict, countryLabel(plateCountry))
+      : null
+  // what right looks like for this country — shown under either error
+  const plateHint = plateRules ? plateHintText(plateRules, plateCountry, plateVerdict) : null
+  // the typed code once it priced, else the campaign the server would apply
+  const activePromo = promo ?? autoPromo
+
+  // plates must be ≥3 chars with a country (helpers/vehicle.js#checkCars) and
+  // pass that country's format rules; the server re-validates either way
   const canProceed =
     plate.trim().length >= 3 &&
+    plateVerdict?.valid !== false &&
     period !== null &&
     emailValid &&
     (!vinRequired || isValidVin(vin)) &&
@@ -252,9 +397,51 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   // "Moldovan vignette is not required for a Moldovan vehicle plate"
   const mdOnMd = product.country === "md" && plateCountry === "md"
 
+  const applyPromo = () => {
+    const code = promoCode.trim().toUpperCase()
+    if (!code) return
+    setPromoError(null)
+    // the effect above prices it and reports back
+    setAppliedCode(code)
+  }
+
+  const removePromo = () => {
+    setAppliedCode(null)
+    setPromo(null)
+    setPromoError(null)
+    setPromoCode("")
+  }
+
+  /**
+   * Leaving step 1: let the server have the final say on the plate
+   * (POST /public/vehicles/validate) and adopt the normalized plate it echoes
+   * — that is the form the order will store. The check failing (offline, 5xx)
+   * must not trap the user: the local rules already passed and order creation
+   * validates again anyway.
+   */
+  const goToConfirm = async () => {
+    setPlateError(null)
+    try {
+      const result = await validateVehicles.mutateAsync([
+        { plate: plate.trim(), country: plateCountry },
+      ])
+      const invalid = firstInvalid(result)
+      if (invalid) {
+        setPlateError(invalid.error?.message ?? t("plate.rejected"))
+        setPlateErrorHint(invalid.hint ?? null)
+        return
+      }
+      const normalized = result.vehicles[0]?.plate
+      if (normalized && normalized !== plate) setPlate(normalized)
+    } catch {
+      /* the plate check itself is unavailable — don't block the purchase */
+    }
+    setStep("confirm")
+  }
+
   const submit = async (options: { allowDuplication?: boolean } = {}) => {
     if (!terms) {
-      toast.error("Please accept the terms and conditions")
+      toast.error(t("order.acceptTerms"))
       return
     }
     setDuplicateWarning(null)
@@ -288,6 +475,9 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
               custom_id: crypto.randomUUID(),
             },
           ],
+          // the code the user applied; without one the server still picks the
+          // best auto campaign for this order by itself
+          ...(appliedCode ? { promo_code: appliedCode } : {}),
           ...(isGuest ? { email: email.trim() } : {}),
           ...(driverInfoRequired
             ? {
@@ -314,9 +504,16 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
       ) {
         // the plate already has an overlapping order — let the user decide
         setDuplicateWarning(e.message)
+      } else if (isPromoError(e)) {
+        // the code stopped applying between validate and checkout (limit
+        // reached, expired, budget gone) — drop it and let them pay without
+        setAppliedCode(null)
+        setPromo(null)
+        setPromoError(e.message)
+        toast.error(e.message)
       } else {
         const message =
-          e instanceof ApiRequestError ? e.message : "Could not create the order"
+          e instanceof ApiRequestError ? e.message : t("order.createFailed")
         toast.error(message)
       }
       setStep("confirm")
@@ -347,7 +544,10 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
     <Drawer open={open} onOpenChange={closeGuard}>
       <DrawerContent className="border-0 !bg-brand data-[vaul-drawer-direction=bottom]:max-h-[94dvh] data-[vaul-drawer-direction=bottom]:rounded-t-[26px]">
         <DrawerTitle className="sr-only">
-          Order {product.title} — {COUNTRY_NAMES[product.country]}
+          {t("order.title", {
+            product: product.title,
+            country: countryLabel(product.country),
+          })}
         </DrawerTitle>
 
         {step === "creating" && <CreatingScreen />}
@@ -370,9 +570,15 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                 {/* plate + vin */}
                 <Card className="mt-3 rounded-[24px] ring-0">
                   <CardContent className="flex items-center gap-2.5">
-                    <Select value={plateCountry} onValueChange={setPlateCountry}>
+                    <Select
+                      value={plateCountry}
+                      onValueChange={(next) => {
+                        setPlateCountry(next)
+                        setPlateError(null)
+                      }}
+                    >
                       <SelectTrigger
-                        aria-label="Plate country"
+                        aria-label={t("order.plateCountry")}
                         // the trigger base pins un-sized inner svgs to 16px — let the flag fill its box
                         className="h-auto shrink-0 gap-1.5 rounded-xl border-0 bg-[#f1f4f8] px-2.5 py-3 shadow-none [&>svg]:size-5 [&>svg]:text-navy-soft [&_span_svg]:size-full"
                       >
@@ -386,7 +592,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                         {PLATE_COUNTRIES.map((c) => (
                           <SelectItem key={c} value={c} className="[&_span_svg]:size-full">
                             <Flag code={c} className="h-3.5 w-5 rounded-[2px]" />
-                            {COUNTRY_NAMES[c]}
+                            {countryLabel(c)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -402,9 +608,13 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                         </span>
                         <Input
                           value={plate}
-                          onChange={(e) => setPlate(e.target.value.toUpperCase())}
-                          placeholder="REGISTRATION PLATE"
-                          aria-label="Registration plate"
+                          onChange={(e) => {
+                            setPlate(e.target.value.toUpperCase())
+                            // the server's verdict was about the old plate
+                            setPlateError(null)
+                          }}
+                          placeholder={t("order.platePlaceholder").toLocaleUpperCase()}
+                          aria-label={t("order.plateLabel")}
                           className="h-auto min-h-14 min-w-0 flex-1 rounded-none border-0 bg-transparent px-3 text-center text-[26px] font-extrabold tracking-[0.2em] text-navy uppercase shadow-none placeholder:text-[13px] placeholder:font-semibold placeholder:tracking-widest placeholder:text-navy-soft focus-visible:ring-0 md:text-[26px]"
                         />
                       </div>
@@ -415,8 +625,8 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                             value={vin}
                             onChange={(e) => setVin(e.target.value.toUpperCase())}
                             onBlur={() => !vin && setVinOpen(false)}
-                            placeholder="VIN CODE"
-                            aria-label="VIN code"
+                            placeholder={t("order.vinPlaceholder").toLocaleUpperCase()}
+                            aria-label={t("order.vinLabel")}
                             className="h-auto w-full rounded-none border-0 bg-brand px-3 py-2 text-center text-sm font-bold tracking-[0.15em] text-white uppercase shadow-none placeholder:text-white/70 focus-visible:ring-0 md:text-sm"
                           />
                         ) : (
@@ -425,12 +635,42 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                             onClick={() => setVinOpen(true)}
                             className="h-auto w-full rounded-none py-2 text-sm font-semibold active:scale-100"
                           >
-                            {vin || "Type vin-code (required)"}
+                            {vin || t("order.vinPrompt")}
                           </Button>
                         ))}
                     </div>
                   </CardContent>
                 </Card>
+
+                {/* what this country's format rules say, or what the server
+                    said when leaving this step */}
+                {(plateError || localPlateError) && (
+                  <div className="mt-2 px-1 leading-snug">
+                    <p className="text-[13px] font-semibold text-sun">
+                      {plateError || localPlateError}
+                    </p>
+                    {(plateError ? plateErrorHint ?? plateHint : plateHint) && (
+                      <p className="mt-0.5 text-xs font-semibold text-white/80">
+                        {plateError ? plateErrorHint ?? plateHint : plateHint}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* plate → vehicle (VIN, make, model) where a registry answers */}
+                <VehicleLookupRow
+                  plate={plate}
+                  country={plateCountry}
+                  ready={plateVerdict?.valid !== false}
+                  tone="dark"
+                  className="mt-2"
+                  onVehicle={(vehicle) => {
+                    if (vehicle.vin_code) {
+                      setVin(vehicle.vin_code)
+                      setVinOpen(true)
+                    }
+                  }}
+                />
 
                 {/* saved plates — the account's cars, or a guest's own earlier orders */}
                 {savedVehicles.length > 0 && (
@@ -449,6 +689,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                             onClick={() => {
                               setPlate(v.plate)
                               setPlateCountry(v.country)
+                              setPlateError(null)
                             }}
                             className={cn(selected && "ring-2 ring-white/80")}
                           >
@@ -469,7 +710,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                     value={period ?? ""}
                     onValueChange={(p) => p && setPeriod(p)}
                     spacing={3}
-                    aria-label="Validity period"
+                    aria-label={t("order.periodLabel")}
                     className="w-max px-4 pb-2"
                   >
                     {periods.map((p) => {
@@ -502,7 +743,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                 <Card className="mt-3 rounded-[24px] ring-0">
                   <CardContent>
                     <p className="text-lg font-extrabold tracking-wide text-navy uppercase">
-                      Valid period from
+                      {t("order.validFrom")}
                     </p>
                     <Popover open={dateOpen} onOpenChange={setDateOpen}>
                       <PopoverTrigger asChild>
@@ -539,7 +780,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                         if (v === "tomorrow") setStartDate(dayStart(1))
                       }}
                       spacing={3}
-                      aria-label="Quick start date"
+                      aria-label={t("order.quickStartLabel")}
                       className="mt-3 w-full"
                     >
                       <ToggleGroupItem
@@ -547,10 +788,10 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                         disabled={fromTomorrowOnly}
                         className={QUICK_DATE}
                       >
-                        Today
+                        {t("order.today")}
                       </ToggleGroupItem>
                       <ToggleGroupItem value="tomorrow" className={QUICK_DATE}>
-                        Tomorrow
+                        {t("order.tomorrow")}
                       </ToggleGroupItem>
                     </ToggleGroup>
                   </CardContent>
@@ -561,15 +802,15 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                   <Card className="mt-3 rounded-[24px] ring-0">
                     <CardContent className="space-y-2.5">
                       <p className="text-lg font-extrabold tracking-wide text-navy uppercase">
-                        Driver details
+                      {t("order.driverDetails")}
                       </p>
                       <Input
                         value={driver.user_name}
                         onChange={(e) =>
                           setDriver((d) => ({ ...d, user_name: e.target.value }))
                         }
-                        placeholder="Full name"
-                        aria-label="Full name"
+                        placeholder={t("order.driverName")}
+                        aria-label={t("order.driverName")}
                         className={FIELD}
                       />
                       <Input
@@ -577,8 +818,8 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                         onChange={(e) =>
                           setDriver((d) => ({ ...d, passport_number: e.target.value }))
                         }
-                        placeholder="Passport number"
-                        aria-label="Passport number"
+                        placeholder={t("order.passportNumber")}
+                        aria-label={t("order.passportNumber")}
                         className={FIELD}
                       />
                       <Select
@@ -588,16 +829,16 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                         }
                       >
                         <SelectTrigger
-                          aria-label="Passport country"
+                          aria-label={t("order.passportCountry")}
                           className={cn(FIELD, "justify-between")}
                         >
-                          <span className="text-navy-soft">Passport country</span>
+                          <span className="text-navy-soft">{t("order.passportCountry")}</span>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {Object.entries(COUNTRY_NAMES).map(([code, name]) => (
+                          {countryOptions().map((code) => (
                             <SelectItem key={code} value={code}>
-                              {name}
+                              {countryLabel(code)}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -614,8 +855,8 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                       value={email}
                       readOnly={!isGuest}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="Email"
-                      aria-label="Email"
+                      placeholder={t("common.email")}
+                      aria-label={t("common.email")}
                       className={cn(
                         "h-auto w-full rounded-2xl border-0 bg-brand-tint/70 px-4 py-3.5 text-center text-lg font-semibold text-white shadow-none placeholder:text-white/70 focus-visible:ring-white/40 md:text-lg",
                         !isGuest && "cursor-default"
@@ -624,11 +865,11 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                     {selectedPrice && (
                       <div className="mt-4 space-y-2.5 px-1">
                         <PriceRow
-                          label="Official Vignette"
+                          label={t("order.officialVignette")}
                           value={fmt(selectedPrice.government_price)}
                         />
                         <PriceRow
-                          label="Vignette Online Identification + VAT"
+                          label={t("order.serviceFee")}
                           value={fmt(servicePrice)}
                         />
                       </div>
@@ -648,14 +889,13 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
 
                 {fromTomorrowOnly && (
                   <p className="mt-3 px-1 text-center text-sm font-semibold text-white/90">
-                    This vignette can only start from tomorrow.
+                    {t("order.fromTomorrowOnly")}
                   </p>
                 )}
                 {mdOnMd && (
                   <Alert className="mt-3 rounded-2xl border-0 bg-pink/90 text-white">
                     <AlertDescription className="font-bold text-white">
-                      A Moldovan vignette is not required for a Moldovan vehicle plate —
-                      pick a different plate country.
+                      {t("order.mdOnMd")}
                     </AlertDescription>
                   </Alert>
                 )}
@@ -664,23 +904,28 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                   variant="mint"
                   size="xl"
                   className="mt-4 w-full"
-                  disabled={!canProceed || mdOnMd}
-                  onClick={() => setStep("confirm")}
+                  disabled={!canProceed || mdOnMd || validateVehicles.isPending}
+                  onClick={goToConfirm}
                 >
-                  Next
+                  {validateVehicles.isPending ? (
+                    <>
+                      <Spinner className="size-5" /> {t("order.checkingPlate")}
+                    </>
+                  ) : (
+                    t("order.next")
+                  )}
                 </Button>
               </>
             ) : (
               <>
                 <p className="mt-4 px-1 text-[17px] leading-snug font-semibold text-white">
-                  Double check the car plate and the countries as you will not
-                  be able to change this after placing an order.
+                  {t("order.confirmIntro")}
                 </p>
 
                 {/* Important! plate recap */}
                 <Card className="mt-4 rounded-[24px] ring-0">
                   <CardContent>
-                    <p className="text-lg font-extrabold text-pink">Important!</p>
+                    <p className="text-lg font-extrabold text-pink">{t("order.important")}</p>
                     <div className="relative mt-2">
                       <div className="overflow-hidden rounded-xl">
                         <div className="flex items-stretch overflow-hidden bg-[#ECEFF3]">
@@ -704,14 +949,14 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                         variant="brand"
                         size="icon-lg"
                         onClick={() => setStep("order")}
-                        aria-label="Edit plate"
+                        aria-label={t("order.editPlate")}
                         className="absolute -top-2 -right-2 rounded-full shadow-md"
                       >
                         <Pencil className="size-4" />
                       </Button>
                     </div>
                     <p className="mt-3 text-[15px] font-semibold text-navy">
-                      The e-vignette below is for this plate.
+                      {t("order.plateNote")}
                     </p>
                   </CardContent>
                 </Card>
@@ -725,7 +970,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                     />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[17px] font-extrabold text-navy">
-                        {COUNTRY_NAMES[product.country]}
+                        {countryLabel(product.country)}
                       </span>
                       <span className="block truncate text-[13px] font-semibold whitespace-nowrap text-navy-soft">
                         {periodLabel(period!)} · {formatDayMonth(startDate)} —{" "}
@@ -743,7 +988,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                 {onSwitchCountry && (
                   <>
                     <p className="mt-5 text-center text-[15px] font-extrabold tracking-wide text-white uppercase">
-                      Add other e-vignettes in one click
+                      {t("order.addOthers")}
                     </p>
                     <ScrollArea className="-mx-4 mt-3">
                       <div className="flex w-max gap-4 px-6 pb-2">
@@ -763,7 +1008,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                                 </Badge>
                               </span>
                               <span className="max-w-16 truncate text-[13px] font-bold text-white">
-                                {COUNTRY_NAMES[c]}
+                                {countryLabel(c)}
                               </span>
                             </Button>
                           ))}
@@ -785,6 +1030,16 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                       currency={currency}
                       showBadges
                     />
+                    <PromoCodeInput
+                      code={promoCode}
+                      onCode={setPromoCode}
+                      applied={promo}
+                      auto={autoPromo}
+                      error={promoError}
+                      pending={promoChecking}
+                      onApply={applyPromo}
+                      onRemove={removePromo}
+                    />
                     <label className="mt-4 flex cursor-pointer items-start gap-3 px-1">
                       <Checkbox
                         checked={terms}
@@ -792,23 +1047,23 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                         className="mt-0.5 size-6 shrink-0 rounded-md border-2 border-white/80 bg-white/15 data-checked:border-white data-checked:bg-white data-checked:text-brand"
                       />
                       <span className="text-[15px] leading-snug font-semibold text-white">
-                        By clicking on pay I agree with the{" "}
+                        {t("order.termsPrefix")}{" "}
                         <a
                           href="https://vignette.id/legal/terms"
                           target="_blank"
                           rel="noreferrer"
                           className="underline"
                         >
-                          terms and conditions
+                          {t("order.termsLink")}
                         </a>{" "}
-                        and the{" "}
+                        {t("order.termsMiddle")}{" "}
                         <a
                           href="https://vignette.id/legal/privacy"
                           target="_blank"
                           rel="noreferrer"
                           className="underline"
                         >
-                          privacy policy
+                          {t("order.privacyLink")}
                         </a>
                       </span>
                     </label>
@@ -817,9 +1072,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
 
                 <Alert className="mt-4 rounded-[24px] border-0 bg-pink text-white">
                   <AlertDescription className="text-[17px] leading-snug font-extrabold text-white">
-                    You are fully responsible for all data errors. After payment
-                    the data cannot be changed and the refund is not provided
-                    according to government rules!
+                    {t("order.responsibility")}
                   </AlertDescription>
                 </Alert>
 
@@ -829,32 +1082,39 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                       {duplicateWarning}
                     </AlertTitle>
                     <AlertDescription className="text-navy-soft">
-                      <p>You can still place this order if you're sure it's not a duplicate.</p>
+                      <p>{t("order.duplicateNote")}</p>
                       <Button
                         variant="outline"
                         size="pill"
                         onClick={() => submit({ allowDuplication: true })}
                         className="mt-3 w-full border-2 border-pink bg-transparent text-pink uppercase tracking-wider hover:bg-pink/5 hover:text-pink"
                       >
-                        Buy anyway
+                        {t("order.buyAnyway")}
                       </Button>
                     </AlertDescription>
                   </Alert>
                 )}
 
-                <div className="mt-5 flex items-end justify-between px-1">
+                <div className="mt-5 flex items-end justify-between gap-3 px-1">
                   <span className="text-lg font-semibold text-white">
-                    Total · 1 vignette
+                    {t("order.total", { count: 1 })}
                   </span>
-                  <span className="text-3xl font-extrabold text-white">{fmt(total)}</span>
+                  <span className="flex items-baseline gap-2">
+                    {/* the promo prices in EUR, so it can only restate the
+                        headline number while EUR is what's on screen */}
+                    {activePromo && currency === "EUR" && (
+                      <span className="text-lg font-semibold text-white/60 line-through">
+                        {formatPrice(activePromo.price_preview.subtotal_eur, "EUR")}
+                      </span>
+                    )}
+                    <span className="text-3xl font-extrabold text-white">
+                      {activePromo && currency === "EUR"
+                        ? formatPrice(activePromo.price_preview.pay_price_eur, "EUR")
+                        : fmt(total)}
+                    </span>
+                  </span>
                 </div>
-                {eurTotal !== null && (
-                  <p className="mt-1 px-1 text-right text-xs font-semibold text-white/75">
-                    Charged in euro: {formatPrice(eurTotal, "EUR")}. The{" "}
-                    {currency} amount is an estimate — your bank sets the final
-                    rate.
-                  </p>
-                )}
+                <TotalNote promo={activePromo} currency={currency} eurTotal={eurTotal} />
 
                 <Button
                   variant="mint"
@@ -863,7 +1123,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                   disabled={!terms}
                   onClick={() => submit()}
                 >
-                  Pay
+                  {t("order.pay")}
                 </Button>
               </>
             )}
@@ -881,6 +1141,7 @@ const QUICK_DATE =
   "h-12 min-w-0 flex-1 rounded-full border-2 border-[#3a3f47] bg-transparent text-[15px] font-extrabold tracking-wider text-navy uppercase hover:bg-transparent data-[state=on]:border-[#3a3f47] data-[state=on]:bg-[#3a3f47] data-[state=on]:text-white disabled:opacity-40"
 
 function StepIndicator({ step }: { step: "order" | "confirm" }) {
+  const { t } = useT()
   return (
     <div className="mt-2 flex rounded-full bg-white/25 p-1">
       <span
@@ -897,7 +1158,7 @@ function StepIndicator({ step }: { step: "order" | "confirm" }) {
         >
           {step === "confirm" ? <Check className="size-4" strokeWidth={3.5} /> : "1"}
         </span>
-        Order
+        {t("order.stepOrder")}
       </span>
       <span
         className={cn(
@@ -913,13 +1174,70 @@ function StepIndicator({ step }: { step: "order" | "confirm" }) {
         >
           2
         </span>
-        Confirm
+        {t("order.stepConfirm")}
       </span>
     </div>
   )
 }
 
+/**
+ * The line under the total. Two things can need saying and they overlap: a
+ * promo always quotes EUR (that is what the payment link charges), and a
+ * non-EUR display currency is only ever an estimate — so when both apply the
+ * euro figure quoted is the one the promo left, not the gross.
+ */
+function TotalNote({
+  promo,
+  currency,
+  eurTotal,
+}: {
+  promo: PromoValidateResult | null
+  currency: string
+  /** the pre-promo EUR total, or null while EUR is the display currency */
+  eurTotal: number | null
+}) {
+  const { t } = useT()
+  const label = promo?.promo?.code ?? promo?.promo?.name ?? ""
+  const discount = promo ? formatPrice(promo.discount_eur, "EUR") : ""
+
+  if (promo && eurTotal !== null) {
+    return (
+      <p className="mt-1 px-1 text-right text-xs font-semibold text-white/75">
+        {t("order.chargedInEuroPromo", {
+          amount: formatPrice(promo.price_preview.pay_price_eur, "EUR"),
+          code: label,
+          discount,
+          currency,
+        })}
+      </p>
+    )
+  }
+  if (promo) {
+    return (
+      <p className="mt-1 px-1 text-right text-xs font-semibold text-white/75">
+        {t("order.promoOff", {
+          code: label,
+          discount,
+          subtotal: formatPrice(promo.price_preview.subtotal_eur, "EUR"),
+        })}
+      </p>
+    )
+  }
+  if (eurTotal !== null) {
+    return (
+      <p className="mt-1 px-1 text-right text-xs font-semibold text-white/75">
+        {t("order.chargedInEuro", {
+          amount: formatPrice(eurTotal, "EUR"),
+          currency,
+        })}
+      </p>
+    )
+  }
+  return null
+}
+
 function ProductSummary({ product }: { product: CatalogProduct }) {
+  const { t } = useT()
   const badge = productBadge(product)
   return (
     <Card className="mt-3 rounded-[24px] ring-0">
@@ -939,7 +1257,7 @@ function ProductSummary({ product }: { product: CatalogProduct }) {
           <p className="flex items-center gap-2">
             <FlagRect code={product.country} />
             <span className="truncate text-xs font-extrabold tracking-wider text-orange-400 uppercase">
-              {COUNTRY_NAMES[product.country]}
+              {countryLabel(product.country)}
             </span>
           </p>
           <h3 className="mt-0.5 truncate text-[22px] font-extrabold text-navy">
@@ -956,7 +1274,7 @@ function ProductSummary({ product }: { product: CatalogProduct }) {
                     className="h-auto flex-col items-start gap-0 rounded-lg border-[#e3ebf3] px-2 py-1 leading-tight"
                   >
                     <span className="text-[10px] font-extrabold tracking-wider whitespace-nowrap text-navy uppercase">
-                      {key}
+                      {RESTRICTION_KEYS[key] ? t(RESTRICTION_KEYS[key]) : key}
                     </span>
                     <span className="text-xs font-extrabold whitespace-nowrap text-pink">
                       {value}
@@ -972,6 +1290,7 @@ function ProductSummary({ product }: { product: CatalogProduct }) {
 }
 
 function CalendarChip({ days }: { days: string }) {
+  const { t } = useT()
   return (
     <span className="flex w-14 flex-col overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-black/5">
       <span className="relative h-2.5 bg-[#f2717c]">
@@ -981,7 +1300,7 @@ function CalendarChip({ days }: { days: string }) {
       <span className="py-0.5 text-center leading-tight">
         <span className="block text-lg font-extrabold text-[#3b4a6b]">{days}</span>
         <span className="block pb-0.5 text-[9px] font-extrabold tracking-wider text-[#f2717c] uppercase">
-          days
+          {t("unit.days", { count: Number(days) })}
         </span>
       </span>
     </span>
@@ -1018,6 +1337,7 @@ function FlexPanel({
   currency: string
   showBadges?: boolean
 }) {
+  const { t } = useT()
   return (
     <div className="mt-4">
       <div className="flex items-center justify-between gap-2">
@@ -1029,11 +1349,11 @@ function FlexPanel({
           />
           <span className="min-w-0 leading-tight">
             <span className="flex items-center gap-1 text-[15px] font-bold whitespace-nowrap text-white">
-              Flex service{" "}
+              {t("order.flexTitle")}{" "}
               <CircleQuestionMark className="size-3.5 shrink-0 opacity-80" />
             </span>
             <span className="text-xs font-semibold whitespace-nowrap text-white/75">
-              (Recommended)
+              {t("order.flexRecommended")}
             </span>
           </span>
         </label>
@@ -1042,13 +1362,13 @@ function FlexPanel({
           value={type}
           onValueChange={(v) => (v === "default" || v === "expanded") && onType(v)}
           spacing={0}
-          aria-label="Flex tier"
+          aria-label={t("order.flexTierLabel")}
           className="shrink-0 gap-0 rounded-xl bg-white/90 p-1"
         >
           {(
             [
-              ["default", "Default", defaultPrice],
-              ["expanded", "Expanded", expandedPrice],
+              ["default", "order.flexDefault", defaultPrice],
+              ["expanded", "order.flexExpanded", expandedPrice],
             ] as const
           ).map(([value, label, price]) => (
             <ToggleGroupItem
@@ -1057,7 +1377,7 @@ function FlexPanel({
               className="h-auto min-w-0 flex-col items-center gap-0 rounded-lg px-2 py-1 leading-tight opacity-50 hover:bg-transparent hover:opacity-50 data-[state=on]:bg-white data-[state=on]:opacity-100 data-[state=on]:shadow first:rounded-lg last:rounded-lg"
             >
               <span className="text-[9px] font-extrabold tracking-wider text-navy-soft uppercase">
-                {label}
+                {t(label)}
               </span>
               <span className="text-sm font-extrabold whitespace-nowrap text-navy">
                 {formatPrice(price, currency)}
@@ -1068,17 +1388,19 @@ function FlexPanel({
       </div>
       {showBadges && enabled && (
         <div className="mt-3 flex flex-col items-start gap-2">
-          {[
-            "Refundable before activation",
-            "Car plate can be changed before activation",
-            "Travel date can be changed before activation",
-          ].map((text) => (
+          {(
+            [
+              "order.flexBenefitRefund",
+              "order.flexBenefitPlate",
+              "order.flexBenefitDate",
+            ] as const
+          ).map((key) => (
             <Badge
-              key={text}
+              key={key}
               variant="secondary"
               className="rounded-lg bg-white/25 px-3 py-1.5 text-[14px] font-semibold text-white hover:bg-white/25"
             >
-              {text}
+              {t(key)}
             </Badge>
           ))}
         </div>
@@ -1088,12 +1410,13 @@ function FlexPanel({
 }
 
 function CreatingScreen() {
+  const { t } = useT()
   return (
     <div className="flex min-h-[86dvh] flex-col items-center justify-center gap-8">
       <span className="relative flex size-28 items-center justify-center rounded-full bg-mint shadow-[0_0_60px_rgba(69,217,161,0.5)]">
         <Spinner className="size-12 text-white" />
       </span>
-      <p className="text-xl font-semibold text-white">Creating your order…</p>
+      <p className="text-xl font-semibold text-white">{t("order.creating")}</p>
     </div>
   )
 }

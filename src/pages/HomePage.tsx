@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { apiErrorMessage } from "@/lib/api"
+import { useT } from "@/i18n"
 import { useAuthStore } from "@/stores/auth"
 import { useOrders } from "@/queries/orders"
 import { OrderCard } from "@/components/home/OrderCard"
@@ -22,6 +23,7 @@ const HIDDEN_STATUSES = new Set(["DELETED", "UNPAID DELETED", "USER DELETED", "U
 
 export function HomePage() {
   const navigate = useNavigate()
+  const { t } = useT()
   const authStatus = useAuthStore((s) => s.status)
   // waits for the session bootstrap on its own, and polls every 20s while
   // any order is still CREATED/PENDING
@@ -47,13 +49,13 @@ export function HomePage() {
       {isError && visible.length === 0 ? (
         <Alert variant="destructive" className="rounded-[28px] border-0 bg-white/95">
           <TriangleAlert />
-          <AlertTitle className="font-bold">Couldn't load your vignettes</AlertTitle>
+          <AlertTitle className="font-bold">{t("home.loadErrorTitle")}</AlertTitle>
           <AlertDescription className="font-medium text-navy-soft">
-            {apiErrorMessage(error, "Failed to load orders")}
+            {apiErrorMessage(error, t("home.loadErrorBody"))}
           </AlertDescription>
           <AlertAction>
             <Button variant="brand" size="sm" onClick={() => void refetch()}>
-              Retry
+              {t("common.retry")}
             </Button>
           </AlertAction>
         </Alert>
@@ -80,8 +82,11 @@ export function HomePage() {
               onClick={() => void fetchNextPage()}
             >
               {isFetchingNextPage
-                ? "Loading…"
-                : `Load more (${pagination.current}/${pagination.total})`}
+                ? t("common.loading")
+                : t("common.loadMore", {
+                    current: pagination.current,
+                    total: pagination.total,
+                  })}
             </Button>
           )}
         </>

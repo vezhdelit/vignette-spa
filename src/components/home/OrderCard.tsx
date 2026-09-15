@@ -7,6 +7,7 @@ import {
   ExternalLink,
   Pencil,
   FileText,
+  Ticket,
   Undo2,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -39,20 +40,30 @@ import {
 } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import { PlateBadge } from "@/components/order/PlateBadge"
+import { VehicleLookupRow } from "@/components/order/VehicleLookup"
 import { FlagRect } from "@/lib/countries"
-import { COUNTRY_NAMES, PLATE_COUNTRIES, Flag } from "@/lib/countries"
-import { formatDotDateTime, formatEndDate, periodLabel } from "@/lib/format"
+import { countryLabel, PLATE_COUNTRIES, Flag } from "@/lib/countries"
+import {
+  formatDotDateTime,
+  formatEndDate,
+  formatPrice,
+  periodParts,
+} from "@/lib/format"
+import { useT, type MessageKey } from "@/i18n"
 import { apiBlob, apiErrorMessage } from "@/lib/api"
+import { plateErrorText, plateHintText } from "@/lib/plate-rules"
 import { isValidVin } from "@/lib/vehicle"
 import { useAuthStore } from "@/stores/auth"
 import { EMPTY_CATALOG, useCatalog } from "@/queries/catalog"
 import { useModifyOrder, useRefundOrder, useTransferOrder } from "@/queries/orders"
+import { usePlateRules, usePlateValidator } from "@/queries/vehicles"
 import { cn } from "@/lib/utils"
 import type { Order } from "@/types/api"
 
 interface StatusTheme {
   wrapper: string
-  banner: string | null
+  /** a message key — the card resolves it, so the theme stays data */
+  banner: MessageKey | null
   bannerClass: string
   dot: string
 }
@@ -64,14 +75,14 @@ function statusTheme(order: Order): StatusTheme {
     case "CREATED":
       return {
         wrapper: "bg-[#d7dee6]",
-        banner: "Awaiting payment!\nThe payment was not completed for this order",
+        banner: "orderCard.banner.created",
         bannerClass: "text-navy",
         dot: "bg-slate-400",
       }
     case "PENDING":
       return {
         wrapper: "bg-sun",
-        banner: "Processing (~15m)!\nDon't drive without active vignette to avoid fines",
+        banner: "orderCard.banner.pending",
         bannerClass: "text-[#4a3200]",
         dot: "bg-amber-400",
       }
@@ -86,21 +97,21 @@ function statusTheme(order: Order): StatusTheme {
     case "DEFERRED":
       return {
         wrapper: "bg-brand-soft",
-        banner: "Scheduled — activates on the start date",
+        banner: "orderCard.banner.scheduled",
         bannerClass: "text-navy",
         dot: "bg-brand",
       }
     case "REFUNDED":
       return {
         wrapper: "bg-[#d7dee6]",
-        banner: "Refunded",
+        banner: "orderCard.banner.refunded",
         bannerClass: "text-navy",
         dot: "bg-slate-400",
       }
     default:
       return {
         wrapper: "bg-[#d7dee6]",
-        banner: order.status === "EXPIRED" ? "Expired" : null,
+        banner: order.status === "EXPIRED" ? "orderCard.banner.expired" : null,
         bannerClass: "text-navy",
         dot: "bg-slate-400",
       }
@@ -108,13 +119,13 @@ function statusTheme(order: Order): StatusTheme {
 }
 
 // Mirrors api/controllers/public-me.js#MODIFY_ERROR_MESSAGES — the `modify`
-// block only carries a reason_code on read, so the copy has to live here too.
-const MODIFY_REASON_MESSAGES: Record<string, string> = {
-  order_status: "Only pending, active, deferred or approved orders can be modified.",
-  already_modified:
-    "Vignette data can only be changed once. This order has already been modified.",
-  no_flex: "This order doesn't have the flexible option, so its data can't be changed.",
-  window_passed: "The window for changing this vignette has closed.",
+// block only carries a reason_code on read, never a sentence, so the copy
+// lives (and is translated) here.
+const MODIFY_REASON_KEYS: Record<string, MessageKey> = {
+  order_status: "modify.reason.order_status",
+  already_modified: "modify.reason.already_modified",
+  no_flex: "modify.reason.no_flex",
+  window_passed: "modify.reason.window_passed",
 }
 
 export function OrderCard({
@@ -125,6 +136,7 @@ export function OrderCard({
   /** open the payment modal for this unpaid order (Home provides the drawer) */
   onPay?: (order: Order) => void
 }) {
+  const { t } = useT()
   const [expanded, setExpanded] = useState(false)
   const [drawer, setDrawer] = useState<"modify" | "transfer" | "refund" | null>(null)
   const guest = useAuthStore((s) => s.user?.guest ?? true)
@@ -136,9 +148,8 @@ export function OrderCard({
 
   const theme = statusTheme(order)
   const car = order.cars[0]
-  const countryName =
-    COUNTRY_NAMES[order.country?.toLowerCase()] || order.country?.toUpperCase()
-  const [periodCount, periodUnit] = String(periodLabel(order.period)).split(" ")
+  const countryName = countryLabel(order.country)
+  const period = periodParts(order.period)
 
   const refundAction = order.full_refund?.eligible
     ? order.full_refund
@@ -177,7 +188,7 @@ export function OrderCard({
                 theme.bannerClass
               )}
             >
-              {theme.banner}
+              {t(theme.banner)}
             </AlertDescription>
           </Alert>
         )}
@@ -189,6 +200,10 @@ export function OrderCard({
 
         {/* expandable actions */}
         <CollapsibleContent className="px-3 pt-3 pb-1">
+          {/* the promo this order carries, if any — reserved while the order
+              is unpaid, so it shows on a CREATED order too */}
+          {order.promo && <OrderPromoNote promo={order.promo} />}
+
           {awaitingPayment ? (
             canPay && (
               <Button
@@ -197,27 +212,31 @@ export function OrderCard({
                 className="h-12 w-full text-[15px] tracking-[0.2em]"
                 onClick={() => onPay?.(order)}
               >
-                Complete payment
+                {t("orderCard.completePayment")}
               </Button>
             )
           ) : (
             <>
               <div className="flex flex-wrap gap-2">
                 <ActionChip
-                  label="Transfer Vignette"
+                  label={t("orderCard.transfer")}
                   icon={<ExternalLink className="size-3.5" />}
                   onClick={() => setDrawer("transfer")}
                   disabled={guest}
                 />
                 <ActionChip
-                  label="Modify Vignette Data"
+                  label={t("orderCard.modify")}
                   icon={<Pencil className="size-3.5" />}
                   onClick={() => setDrawer("modify")}
                   disabled={guest}
                 />
                 {refundAction && !guest && (
                   <ActionChip
-                    label={`Refund${refundAction.percent ? ` ${refundAction.percent}%` : ""}`}
+                    label={
+                      refundAction.percent
+                        ? t("orderCard.refundPercent", { percent: refundAction.percent })
+                        : t("orderCard.refund")
+                    }
                     icon={<Undo2 className="size-3.5" />}
                     onClick={() => setDrawer("refund")}
                   />
@@ -225,29 +244,29 @@ export function OrderCard({
               </div>
 
               <p className="mt-3 mb-2 text-[15px] font-semibold text-navy/90">
-                E-vignette Unique Identificator
+                {t("orderCard.uniqueId")}
               </p>
               <div className="flex flex-wrap gap-2">
                 {order.receipt && (
                   <ActionChip
-                    label="RECEIPT"
+                    label={t("orderCard.receipt").toLocaleUpperCase()}
                     icon={<FileText className="size-4 rounded bg-white p-0.5 text-navy" />}
                     href={order.receipt}
                   />
                 )}
                 {car?.pdf && (
                   <ActionChip
-                    label="E-VIGNETTE"
+                    label={t("orderCard.evignette").toLocaleUpperCase()}
                     icon={<FileText className="size-4 rounded bg-white p-0.5 text-navy" />}
                     href={car.pdf}
                   />
                 )}
                 {!guest && (
                   <ActionChip
-                    label="ADD TO"
+                    label={t("orderCard.addTo").toLocaleUpperCase()}
                     trailing={
                       <Badge className="rounded-md bg-white px-1.5 py-0.5 text-[11px] font-extrabold text-navy">
-                        WALLET
+                        {t("orderCard.wallet").toLocaleUpperCase()}
                       </Badge>
                     }
                     onClick={downloadPass}
@@ -256,7 +275,7 @@ export function OrderCard({
               </div>
               {guest && (
                 <p className="mt-2 text-xs font-semibold text-navy/70">
-                  Sign in on the Account tab to transfer, modify or add to Wallet.
+                  {t("orderCard.guestNote")}
                 </p>
               )}
             </>
@@ -268,22 +287,22 @@ export function OrderCard({
           <span className="flex min-w-0 items-center gap-2">
             <FlagRect code={order.country} className="h-5 w-7 shrink-0 rounded" />
             <span className="truncate text-xs font-extrabold whitespace-nowrap text-navy uppercase">
-              Vignette of {countryName}
+              {t("orderCard.vignetteOf", { country: countryName })}
             </span>
           </span>
           <span className="flex items-center gap-2">
             <ShieldCheck className="size-6 text-white" fill="#2fc78d" />
             <Badge className="h-auto flex-col gap-0 rounded-md bg-white px-1.5 py-0.5 leading-none hover:bg-white">
-              <span className="text-[13px] font-extrabold text-pink">{periodCount}</span>
+              <span className="text-[13px] font-extrabold text-pink">{period.count}</span>
               <span className="text-[8px] font-bold tracking-wider text-pink uppercase">
-                {periodUnit ?? "days"}
+                {period.unit}
               </span>
             </Badge>
             <CollapsibleTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                aria-label="Details"
+                aria-label={t("orderCard.detailsLabel")}
                 className="text-navy/70 hover:bg-white/40 hover:text-navy"
               >
                 <Info className="size-6" />
@@ -312,6 +331,7 @@ export function OrderCard({
 
 /** plate + vehicle icon + validity dates — the body of the white card */
 function OrderSummary({ order, theme }: { order: Order; theme: StatusTheme }) {
+  const { t } = useT()
   const car = order.cars[0]
   return (
     <>
@@ -337,12 +357,56 @@ function OrderSummary({ order, theme }: { order: Order; theme: StatusTheme }) {
         </div>
       </div>
       <p className="mt-3 text-[15px] font-semibold tracking-wide">
-        <span className="text-navy-soft">FROM </span>
+        <span className="text-navy-soft uppercase">{t("orderCard.from")} </span>
         <span className="font-bold text-navy">{formatDotDateTime(order.start_date)}</span>
-        <span className="text-navy-soft"> until </span>
+        <span className="text-navy-soft"> {t("orderCard.until")} </span>
         <span className="font-bold text-mint-deep">{formatEndDate(order.end_date)}</span>
       </p>
     </>
+  )
+}
+
+/**
+ * The promo on an order (`promo` on every order read). Amounts are EUR — the
+ * order settled in EUR whatever the app is displaying. Cashback is credited
+ * to the wallet's bonuses once the order is paid, and clawed back if it is
+ * refunded in full, so its status is worth showing rather than just its size.
+ */
+const CASHBACK_STATUS_KEYS: Record<string, MessageKey> = {
+  pending: "orderCard.promo.cashbackPending",
+  granted: "orderCard.promo.cashbackGranted",
+  reversed: "orderCard.promo.cashbackReversed",
+}
+
+function OrderPromoNote({ promo }: { promo: NonNullable<Order["promo"]> }) {
+  const { t } = useT()
+  const cashbackKey = promo.cashback_status
+    ? CASHBACK_STATUS_KEYS[promo.cashback_status]
+    : undefined
+  return (
+    <div className="mb-3 flex items-center gap-2.5 rounded-2xl bg-white/70 px-3 py-2.5">
+      <Ticket className="size-5 shrink-0 text-mint-deep" />
+      <span className="min-w-0 flex-1 leading-tight">
+        <span className="block truncate text-[14px] font-extrabold text-navy">
+          {promo.code ?? promo.name ?? t("orderCard.promoFallback")}
+        </span>
+        {(promo.effect_summary || promo.name) && (
+          <span className="block truncate text-xs font-semibold text-navy-soft">
+            {promo.effect_summary || promo.name}
+          </span>
+        )}
+        {promo.cashback_eur > 0 && cashbackKey && (
+          <span className="block truncate text-xs font-semibold text-navy-soft">
+            {formatPrice(promo.cashback_eur, "EUR")} {t(cashbackKey)}
+          </span>
+        )}
+      </span>
+      {promo.discount_eur > 0 && (
+        <span className="shrink-0 text-[14px] font-extrabold whitespace-nowrap text-mint-deep">
+          −{formatPrice(promo.discount_eur, "EUR")}
+        </span>
+      )}
+    </div>
   )
 }
 
@@ -399,6 +463,7 @@ function ModifyDrawer({
   open: boolean
   onClose: () => void
 }) {
+  const { t } = useT()
   const modify = useModifyOrder()
   // the order card doesn't otherwise touch the catalog — it's needed here for
   // the per-period vin_code_required restriction
@@ -415,10 +480,26 @@ function ModifyDrawer({
   const vinRequired = periodPrice?.restrictions?.includes("vin_code_required") ?? false
   const vinOk = !vinRequired || isValidVin(vin)
 
+  // the new plate under that country's format rules, checked locally from the
+  // rules manifest — the modify endpoint re-validates it anyway, this just
+  // catches it before the round trip
+  const plateRules = usePlateRules().data
+  const checkPlateLocally = usePlateValidator()
+  const plateVerdict = checkPlateLocally(plate, country)
+  const plateProblem =
+    plateRules &&
+    plateVerdict &&
+    !plateVerdict.valid &&
+    plate.trim().length >= plateRules.normalize.min_length
+      ? plateErrorText(plateRules, plateVerdict, countryLabel(country))
+      : null
+  const plateHint =
+    plateProblem && plateRules ? plateHintText(plateRules, country, plateVerdict) : null
+
   const ineligible = order.modify?.eligible === false
-  const reasonMessage = ineligible
-    ? (order.modify?.reason_code && MODIFY_REASON_MESSAGES[order.modify.reason_code]) ||
-      "This vignette can no longer be modified."
+  const reasonKey = ineligible
+    ? (order.modify?.reason_code && MODIFY_REASON_KEYS[order.modify.reason_code]) ||
+      "modify.ineligible"
     : null
 
   const submit = async () => {
@@ -433,7 +514,7 @@ function ModifyDrawer({
           },
         },
       })
-      toast.success("Order successfully modified")
+      toast.success(t("modify.success"))
       onClose()
     } catch (e) {
       toast.error(apiErrorMessage(e))
@@ -452,32 +533,37 @@ function ModifyDrawer({
     >
       <DrawerContent className={ACTION_DRAWER_CLASS}>
         <DrawerHeader>
-          <DrawerTitle>Change vignette data</DrawerTitle>
-          <DrawerDescription>
-            The car plate can be changed before the vignette activates.
-          </DrawerDescription>
+          <DrawerTitle>{t("modify.title")}</DrawerTitle>
+          <DrawerDescription>{t("modify.description")}</DrawerDescription>
         </DrawerHeader>
         <div className="space-y-3 overflow-y-auto px-4">
-          {reasonMessage && (
+          {reasonKey && (
             <Alert variant="destructive" className="border-pink text-pink">
               <TriangleAlert />
               <AlertDescription className="font-semibold text-pink">
-                {reasonMessage}
+                {t(reasonKey)}
               </AlertDescription>
             </Alert>
           )}
           <div className="space-y-1.5">
-            <Label htmlFor={`plate-${order.id}`}>Registration plate</Label>
+            <Label htmlFor={`plate-${order.id}`}>{t("modify.plate")}</Label>
             <Input
               id={`plate-${order.id}`}
               value={plate}
               onChange={(e) => setPlate(e.target.value)}
               className="uppercase"
               disabled={ineligible}
+              aria-invalid={Boolean(plateProblem)}
             />
+            {plateProblem && (
+              <p className="text-xs font-semibold text-pink">{plateProblem}</p>
+            )}
+            {plateHint && (
+              <p className="text-xs font-medium text-navy-soft">{plateHint}</p>
+            )}
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor={`country-${order.id}`}>Plate country</Label>
+            <Label htmlFor={`country-${order.id}`}>{t("modify.plateCountry")}</Label>
             <Select value={country} onValueChange={setCountry} disabled={ineligible}>
               <SelectTrigger id={`country-${order.id}`} className="w-full">
                 <SelectValue />
@@ -486,27 +572,38 @@ function ModifyDrawer({
                 {PLATE_COUNTRIES.map((c) => (
                   <SelectItem key={c} value={c} className="[&_span_svg]:size-full">
                     <Flag code={c} className="h-3.5 w-5 rounded-[2px]" />
-                    {COUNTRY_NAMES[c]}
+                    {countryLabel(c)}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
+          {/* the registries that answer can fill the VIN in from the plate */}
+          {!ineligible && vinRequired && (
+            <VehicleLookupRow
+              plate={plate}
+              country={country}
+              ready={!plateProblem}
+              onVehicle={(vehicle) => {
+                if (vehicle.vin_code) setVin(vehicle.vin_code)
+              }}
+            />
+          )}
           {vinRequired && (
             <div className="space-y-1.5">
-              <Label htmlFor={`vin-${order.id}`}>VIN code</Label>
+              <Label htmlFor={`vin-${order.id}`}>{t("modify.vin")}</Label>
               <Input
                 id={`vin-${order.id}`}
                 value={vin}
                 onChange={(e) => setVin(e.target.value)}
-                placeholder="9 or 17-character VIN"
+                placeholder={t("modify.vinPlaceholder")}
                 className="uppercase"
                 disabled={ineligible}
                 aria-invalid={!vinOk}
               />
               {!vinOk && (
                 <p className="text-xs font-semibold text-pink">
-                  This product requires a VIN code (9 or 17 characters).
+                  {t("modify.vinRequired")}
                 </p>
               )}
             </div>
@@ -518,10 +615,7 @@ function ModifyDrawer({
                 onCheckedChange={(v) => setConfirmed(v === true)}
                 className="mt-0.5"
               />
-              <span>
-                I confirm that the changes were made correctly and I am responsible
-                for their accuracy.
-              </span>
+              <span>{t("modify.confirm")}</span>
             </Label>
           )}
         </div>
@@ -529,12 +623,19 @@ function ModifyDrawer({
           <Button
             size="lg"
             onClick={submit}
-            disabled={modify.isPending || ineligible || !confirmed || !plate.trim() || !vinOk}
+            disabled={
+              modify.isPending ||
+              ineligible ||
+              !confirmed ||
+              !plate.trim() ||
+              !vinOk ||
+              Boolean(plateProblem)
+            }
           >
-            {modify.isPending && <Spinner />} Save changes
+            {modify.isPending && <Spinner />} {t("modify.save")}
           </Button>
           <Button variant="outline" size="lg" onClick={onClose}>
-            Cancel
+            {t("common.cancel")}
           </Button>
         </DrawerFooter>
       </DrawerContent>
@@ -551,6 +652,7 @@ function TransferDrawer({
   open: boolean
   onClose: () => void
 }) {
+  const { t } = useT()
   const transfer = useTransferOrder()
   const [email, setEmail] = useState("")
   const [confirmed, setConfirmed] = useState(false)
@@ -558,7 +660,7 @@ function TransferDrawer({
   const submit = async () => {
     try {
       await transfer.mutateAsync({ id: order.id, targetEmail: email.trim() })
-      toast.success("Order successfully transferred")
+      toast.success(t("transfer.success"))
       onClose()
     } catch (e) {
       toast.error(apiErrorMessage(e))
@@ -577,21 +679,18 @@ function TransferDrawer({
     >
       <DrawerContent className={ACTION_DRAWER_CLASS}>
         <DrawerHeader>
-          <DrawerTitle>Transfer vignette</DrawerTitle>
-          <DrawerDescription>
-            You can transfer your vignette to another account only once. The
-            recipient must already be registered with this email.
-          </DrawerDescription>
+          <DrawerTitle>{t("transfer.title")}</DrawerTitle>
+          <DrawerDescription>{t("transfer.description")}</DrawerDescription>
         </DrawerHeader>
         <div className="space-y-3 overflow-y-auto px-4">
           <div className="space-y-1.5">
-            <Label htmlFor={`transfer-${order.id}`}>Recipient email</Label>
+            <Label htmlFor={`transfer-${order.id}`}>{t("transfer.recipientEmail")}</Label>
             <Input
               id={`transfer-${order.id}`}
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="name@example.com"
+              placeholder={t("transfer.emailPlaceholder")}
             />
           </div>
           <Label className="flex items-start gap-2 text-xs font-medium text-navy-soft">
@@ -600,10 +699,7 @@ function TransferDrawer({
               onCheckedChange={(v) => setConfirmed(v === true)}
               className="mt-0.5"
             />
-            <span>
-              I confirm that the changes were made correctly and I am responsible
-              for their accuracy.
-            </span>
+            <span>{t("modify.confirm")}</span>
           </Label>
         </div>
         <DrawerFooter>
@@ -612,10 +708,10 @@ function TransferDrawer({
             onClick={submit}
             disabled={transfer.isPending || !confirmed || !email.includes("@")}
           >
-            {transfer.isPending && <Spinner />} Transfer
+            {transfer.isPending && <Spinner />} {t("transfer.action")}
           </Button>
           <Button variant="outline" size="lg" onClick={onClose}>
-            Cancel
+            {t("common.cancel")}
           </Button>
         </DrawerFooter>
       </DrawerContent>
@@ -640,12 +736,18 @@ function RefundDrawer({
   amount?: number
   percent?: number
 }) {
+  const { t } = useT()
   const refund = useRefundOrder()
 
   const submit = async () => {
     try {
       const result = await refund.mutateAsync(order.id)
-      toast.success(`Refunded ${result.amount_eur} € (${result.percent}%)`)
+      toast.success(
+        t("refund.success", {
+          amount: formatPrice(result.amount_eur, "EUR"),
+          percent: result.percent,
+        })
+      )
       onClose()
     } catch (e) {
       toast.error(apiErrorMessage(e))
@@ -656,12 +758,19 @@ function RefundDrawer({
     <Drawer open={open} onOpenChange={(v) => !v && onClose()} dismissible={false}>
       <DrawerContent className={ACTION_DRAWER_CLASS}>
         <DrawerHeader>
-          <DrawerTitle>Refund this vignette?</DrawerTitle>
+          <DrawerTitle>{t("refund.title")}</DrawerTitle>
           <DrawerDescription>
             {percent === 100
-              ? `You'll get a full refund${amount ? ` of ${amount} €` : ""}.`
-              : `A partial refund of ${percent ?? 50}%${amount ? ` (${amount} €)` : ""} is available.`}{" "}
-            The vignette stops being valid immediately.
+              ? amount
+                ? t("refund.fullAmount", { amount: formatPrice(amount, "EUR") })
+                : t("refund.full")
+              : amount
+                ? t("refund.partialAmount", {
+                    percent: percent ?? 50,
+                    amount: formatPrice(amount, "EUR"),
+                  })
+                : t("refund.partial", { percent: percent ?? 50 })}{" "}
+            {t("refund.stopsNote")}
           </DrawerDescription>
         </DrawerHeader>
         <DrawerFooter>
@@ -671,10 +780,10 @@ function RefundDrawer({
             disabled={refund.isPending}
             onClick={() => void submit()}
           >
-            {refund.isPending && <Spinner />} Refund
+            {refund.isPending && <Spinner />} {t("refund.action")}
           </Button>
           <Button variant="outline" size="lg" disabled={refund.isPending} onClick={onClose}>
-            Keep vignette
+            {t("refund.keep")}
           </Button>
         </DrawerFooter>
       </DrawerContent>

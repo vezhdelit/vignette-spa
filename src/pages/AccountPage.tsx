@@ -13,6 +13,8 @@ import {
   Gift,
   LogOut,
   MonitorSmartphone,
+  Languages,
+  ScanLine,
   ShieldCheck,
   Star,
   TriangleAlert,
@@ -46,6 +48,15 @@ import { NotificationsList } from "@/components/notifications/NotificationsList"
 import { apiErrorMessage, ApiRequestError } from "@/lib/api"
 import { formatCents, formatDate } from "@/lib/format"
 import {
+  detectLanguage,
+  languageName,
+  SUPPORTED_LANGUAGES,
+  translationCoverage,
+  useI18nStore,
+  useT,
+} from "@/i18n"
+import { runPlateRuleVectors } from "@/lib/plate-rules"
+import {
   APPLE_CLIENT_ID,
   GOOGLE_CLIENT_ID,
   initAppleSignIn,
@@ -70,9 +81,11 @@ import {
   useWallet,
 } from "@/queries/account"
 import { useDisablePush, useEnablePush, usePushSubscription } from "@/queries/push"
+import { usePlateRuleVectors, usePlateRules } from "@/queries/vehicles"
 import { cn } from "@/lib/utils"
 
 export function AccountPage() {
+  const { t } = useT()
   const { data: me } = useMe()
   const user = useAuthStore((s) => s.user)
   const status = useAuthStore((s) => s.status)
@@ -80,7 +93,7 @@ export function AccountPage() {
 
   return (
     <div className="space-y-4 pt-2">
-      <h1 className="px-1 text-[26px] font-extrabold text-white">Account</h1>
+      <h1 className="px-1 text-[26px] font-extrabold text-white">{t("account.title")}</h1>
 
       {/* profile card */}
       <Card className="rounded-[24px] ring-0">
@@ -96,14 +109,14 @@ export function AccountPage() {
             ) : (
               <>
                 <p className="truncate text-[17px] font-extrabold text-navy">
-                  {isGuest ? "Guest" : (me?.email ?? user?.email ?? "—")}
+                  {isGuest ? t("account.guest") : (me?.email ?? user?.email ?? "—")}
                 </p>
                 <p className="text-[13px] font-semibold text-navy-soft">
                   {isGuest
-                    ? "Sign in to keep your vignettes across devices"
+                    ? t("account.guestSubtitle")
                     : me?.created_at
-                      ? `Member since ${formatDate(me.created_at)}`
-                      : "Signed in"}
+                      ? t("account.memberSince", { date: formatDate(me.created_at) })
+                      : t("account.signedIn")}
                 </p>
               </>
             )}
@@ -125,7 +138,7 @@ export function AccountPage() {
 
       {!isGuest && <SignOutButtons />}
       <p className="pt-1 text-center text-xs font-medium text-white/60">
-        User ID: {user?.id ?? "—"}
+        {t("account.userId", { id: user?.id ?? "—" })}
       </p>
     </div>
   )
@@ -152,6 +165,7 @@ type SignInMode =
  * to reset caches by hand.
  */
 function SignInCard() {
+  const { t } = useT()
   const startOtp = useAuthStore((s) => s.startOtp)
   const verifyOtp = useAuthStore((s) => s.verifyOtp)
   const fetchNonce = useAuthStore((s) => s.fetchNonce)
@@ -204,7 +218,7 @@ function SignInCard() {
           setMode({ kind: "link-email", provider, linkToken: result.linkToken })
           setEmail("")
         } else {
-          toast.success("Signed in")
+          toast.success(t("account.signIn.signedIn"))
         }
       } catch (e) {
         toast.error(apiErrorMessage(e))
@@ -258,7 +272,7 @@ function SignInCard() {
     signInWithApple()
       .then((identityToken) => {
         if (!identityToken || !nonce) {
-          toast.error("Apple sign-in didn't return a token")
+          toast.error(t("account.signIn.appleNoToken"))
           return
         }
         return finishSocial("apple", identityToken, nonce)
@@ -287,7 +301,7 @@ function SignInCard() {
       } else {
         setMode({ kind: "otp", email: email.trim(), challengeId: result.challenge_id })
       }
-      toast.success("Code sent — check your inbox")
+      toast.success(t("account.signIn.codeSent"))
     } catch (e) {
       toast.error(apiErrorMessage(e))
     }
@@ -306,7 +320,7 @@ function SignInCard() {
       } else {
         return
       }
-      toast.success("Signed in")
+      toast.success(t("account.signIn.signedIn"))
     } catch (e) {
       toast.error(apiErrorMessage(e))
       setCode("")
@@ -320,14 +334,14 @@ function SignInCard() {
   return (
     <Card className="rounded-[24px] ring-0 [--card-spacing:--spacing(5)]">
       <CardContent>
-        <h2 className="text-lg font-extrabold text-navy">Sign in</h2>
+        <h2 className="text-lg font-extrabold text-navy">{t("account.signIn.title")}</h2>
 
         {mode.kind === "link-email" && (
           <Alert className="mt-2 rounded-xl border-0 bg-brand-soft/50 text-navy">
             <AlertDescription className="font-semibold text-navy">
-              Your {mode.provider === "apple" ? "Apple ID" : "Google account"} didn't
-              share a usable email. Enter your real email — we'll verify it with a
-              code and link it to your {mode.provider} sign-in.
+              {mode.provider === "apple"
+                ? t("account.signIn.linkApple")
+                : t("account.signIn.linkGoogle")}
             </AlertDescription>
           </Alert>
         )}
@@ -336,7 +350,7 @@ function SignInCard() {
           <>
             {mode.kind === "email" && (
               <p className="mt-1 text-sm font-semibold text-navy-soft">
-                We'll email you a 6-digit code. No password needed.
+                {t("account.signIn.subtitle")}
               </p>
             )}
             <Input
@@ -344,8 +358,8 @@ function SignInCard() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && emailValid && start()}
-              placeholder="Email"
-              aria-label="Email"
+              placeholder={t("common.email")}
+              aria-label={t("common.email")}
               className="mt-4 h-auto w-full rounded-2xl border-0 bg-[#f1f4f8] px-4 py-3.5 text-center text-lg font-semibold text-navy shadow-none placeholder:text-navy-soft md:text-lg"
             />
             <Button
@@ -355,7 +369,7 @@ function SignInCard() {
               disabled={busy || !emailValid}
               onClick={start}
             >
-              {busy && <Spinner className="text-white" />} Send code
+              {busy && <Spinner className="text-white" />} {t("account.signIn.sendCode")}
             </Button>
           </>
         )}
@@ -363,7 +377,7 @@ function SignInCard() {
         {showOtpForm && (
           <>
             <p className="mt-1 text-sm font-semibold text-navy-soft">
-              Enter the code we sent to{" "}
+              {t("account.signIn.enterCode")}{" "}
               <span className="text-navy">{mode.email}</span>
             </p>
             <InputOTP
@@ -406,7 +420,7 @@ function SignInCard() {
                   )
                 }
               >
-                Change email
+                {t("account.signIn.changeEmail")}
               </Button>
               <Button
                 variant="link"
@@ -415,12 +429,14 @@ function SignInCard() {
                 disabled={resendIn > 0 || busy}
                 onClick={start}
               >
-                {resendIn > 0 ? `Resend in ${resendIn}s` : "Resend code"}
+                {resendIn > 0
+                  ? t("account.signIn.resendIn", { seconds: resendIn })
+                  : t("account.signIn.resend")}
               </Button>
             </div>
             {busy && (
               <p className="mt-3 flex items-center justify-center gap-2 text-sm font-semibold text-navy-soft">
-                <Spinner /> Verifying…
+                <Spinner /> {t("account.signIn.verifying")}
               </p>
             )}
           </>
@@ -432,7 +448,7 @@ function SignInCard() {
             <div className="relative flex items-center">
               <Separator className="flex-1" />
               <span className="px-3 text-xs font-bold tracking-wider text-navy-soft uppercase">
-                or continue with
+                {t("account.signIn.orContinue")}
               </span>
               <Separator className="flex-1" />
             </div>
@@ -446,7 +462,7 @@ function SignInCard() {
                   onClick={onAppleClick}
                   className="mx-auto flex w-full max-w-[400px] bg-black text-[15px] font-bold text-white hover:bg-black/90 active:scale-[0.98]"
                 >
-                   Continue with Apple
+                   {t("account.signIn.apple")}
                 </Button>
               )}
             </div>
@@ -460,22 +476,23 @@ function SignInCard() {
 /* ----------------------------------------------------- signed-in extras */
 
 function SignedInSections() {
+  const { t } = useT()
   // the same number the header bell shows — kept fresh by that poll
   const unread = useNotificationsSummary().data?.unread_count ?? 0
   return (
     <div className="space-y-3">
-      <Section icon={WalletIcon} title="Wallet">
+      <Section icon={WalletIcon} title={t("account.section.wallet")}>
         <WalletBody />
       </Section>
-      <Section icon={Gift} title="Invite friends">
+      <Section icon={Gift} title={t("account.section.referrals")}>
         <ReferralsBody />
       </Section>
-      <Section icon={Car} title="My vehicles">
+      <Section icon={Car} title={t("account.section.vehicles")}>
         <VehiclesBody />
       </Section>
       <Section
         icon={Bell}
-        title="Notifications"
+        title={t("account.section.notifications")}
         badge={
           unread > 0 ? (
             <Badge className="rounded-full bg-pink px-2 py-0.5 text-[11px] font-extrabold text-white hover:bg-pink">
@@ -486,18 +503,33 @@ function SignedInSections() {
       >
         <NotificationsList />
       </Section>
-      <Section icon={BellRing} title="Push notifications">
+      <Section icon={BellRing} title={t("account.section.push")}>
         <PushBody />
       </Section>
-      <Section icon={MonitorSmartphone} title="Devices & sessions">
+      <Section icon={MonitorSmartphone} title={t("account.section.sessions")}>
         <SessionsBody />
       </Section>
-      <Section icon={ShieldCheck} title="Partner access">
+      <Section icon={ShieldCheck} title={t("account.section.consents")}>
         <ConsentsBody />
       </Section>
-      <Section icon={Coins} title="Currency">
+      <Section icon={Languages} title={t("account.section.language")}>
+        <LanguageBody />
+      </Section>
+      <Section icon={Coins} title={t("account.section.currency")}>
         <CurrencyBody />
       </Section>
+      {/* dev only: proves this build's matcher still reads the served rules
+          the way the server does */}
+      {import.meta.env.DEV && (
+        <>
+          <Section icon={ScanLine} title={t("account.section.plateRules")}>
+            <PlateRulesBody />
+          </Section>
+          <Section icon={Languages} title={t("account.section.translations")}>
+            <TranslationsBody />
+          </Section>
+        </>
+      )}
     </div>
   )
 }
@@ -510,14 +542,30 @@ function SignedInSections() {
  * until they sign in.
  */
 function GuestSections() {
+  const { t } = useT()
   return (
     <div className="space-y-3">
-      <Section icon={Car} title="My vehicles">
+      <Section icon={Car} title={t("account.section.vehicles")}>
         <VehiclesBody />
       </Section>
-      <Section icon={Coins} title="Currency">
+      <Section icon={Languages} title={t("account.section.language")}>
+        <LanguageBody />
+      </Section>
+      <Section icon={Coins} title={t("account.section.currency")}>
         <CurrencyBody />
       </Section>
+      {/* dev only: proves this build's matcher still reads the served rules
+          the way the server does */}
+      {import.meta.env.DEV && (
+        <>
+          <Section icon={ScanLine} title={t("account.section.plateRules")}>
+            <PlateRulesBody />
+          </Section>
+          <Section icon={Languages} title={t("account.section.translations")}>
+            <TranslationsBody />
+          </Section>
+        </>
+      )}
     </div>
   )
 }
@@ -528,6 +576,7 @@ function GuestSections() {
  * it too: it's a display preference, not account data.
  */
 function CurrencyBody() {
+  const { t } = useT()
   const currency = useSettingsStore((s) => s.currency)
   const setCurrency = useSettingsStore((s) => s.setCurrency)
   return (
@@ -537,7 +586,7 @@ function CurrencyBody() {
         value={currency}
         onValueChange={(v) => v && isCurrency(v) && setCurrency(v)}
         spacing={0}
-        aria-label="Display currency"
+        aria-label={t("account.currency.label")}
         className="flex-wrap gap-1.5 rounded-2xl bg-brand-soft/40 p-1.5"
       >
         {CURRENCIES.map((code) => (
@@ -550,10 +599,7 @@ function CurrencyBody() {
           </ToggleGroupItem>
         ))}
       </ToggleGroup>
-      <p className="text-xs font-semibold text-navy-soft">
-        Prices are shown in this currency. Payments are always taken in euro;
-        other currencies are estimates.
-      </p>
+      <p className="text-xs font-semibold text-navy-soft">{t("account.currency.note")}</p>
     </div>
   )
 }
@@ -564,6 +610,7 @@ function CurrencyBody() {
  * not a prompt, so closing it unrated is not reported as a dismissal.
  */
 function RateAppRow({ hasRated }: { hasRated: boolean }) {
+  const { t } = useT()
   const openSheet = useRatingUiStore((s) => s.openSheet)
   return (
     <Card className="gap-0 rounded-[24px] py-0 ring-0">
@@ -576,14 +623,122 @@ function RateAppRow({ hasRated }: { hasRated: boolean }) {
           <Star className="size-5.5 fill-sun text-sun" />
         </span>
         <span className="flex-1">
-          <span className="block text-[16px] font-extrabold text-navy">Rate the app</span>
+          <span className="block text-[16px] font-extrabold text-navy">
+            {t("account.rate.title")}
+          </span>
           <span className="block text-[13px] font-semibold text-navy-soft">
-            {hasRated ? "Thanks for rating — change your mind any time" : "Tell us how we're doing"}
+            {hasRated ? t("account.rate.subtitleRated") : t("account.rate.subtitle")}
           </span>
         </span>
         <ChevronRight className="size-5 text-navy-soft" />
       </button>
     </Card>
+  )
+}
+
+/**
+ * App language. Device-local like the currency (`src/i18n`), and it is what
+ * the API is asked for too — so the copy the server writes for the plate form
+ * arrives in the same language as the UI. "Match my device" clears the choice
+ * and follows `navigator.languages` again.
+ */
+function LanguageBody() {
+  const { t } = useT()
+  const language = useI18nStore((state) => state.language)
+  const explicit = useI18nStore((state) => state.explicit)
+  const setLanguage = useI18nStore((state) => state.setLanguage)
+
+  return (
+    <div className="space-y-3">
+      <ToggleGroup
+        type="single"
+        value={explicit ? language : ""}
+        onValueChange={(value) => value && void setLanguage(value)}
+        spacing={0}
+        aria-label={t("account.language.label")}
+        className="flex-wrap gap-1.5 rounded-2xl bg-brand-soft/40 p-1.5"
+      >
+        {SUPPORTED_LANGUAGES.map((code) => (
+          <ToggleGroupItem
+            key={code}
+            value={code}
+            className="h-auto min-w-0 rounded-xl px-3 py-1.5 text-sm font-extrabold text-navy-soft hover:bg-transparent data-[state=on]:bg-white data-[state=on]:text-navy data-[state=on]:shadow first:rounded-xl last:rounded-xl"
+          >
+            {languageName(code)}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+      {explicit && (
+        <Button
+          variant="link"
+          size="sm"
+          className="h-auto px-1 font-bold text-brand"
+          onClick={() => void setLanguage(detectLanguage(), { explicit: false })}
+        >
+          {t("account.language.systemDefault")}
+        </Button>
+      )}
+      <p className="text-xs font-semibold text-navy-soft">{t("account.language.note")}</p>
+    </div>
+  )
+}
+
+/**
+ * Dev-only: what the active translation actually covers. A partial file is
+ * legitimate — the missing keys render in English — but it should be a
+ * decision, not a surprise, and a key left over from a renamed string should
+ * be visible.
+ */
+function TranslationsBody() {
+  const { t, language } = useT()
+  // recomputed per render; the language in the deps is what makes it fresh
+  const coverage = translationCoverage()
+  void language
+
+  return (
+    <div className="space-y-2.5">
+      <Tile className="flex items-center justify-between gap-2">
+        <span className="text-sm font-semibold text-navy-soft">
+          {t("dev.translations.language")}
+        </span>
+        <span className="text-sm font-extrabold text-navy">
+          {languageName(coverage.language)} ({coverage.language})
+        </span>
+      </Tile>
+      <Tile className="flex items-center justify-between gap-2">
+        <span className="text-sm font-semibold text-navy-soft">
+          {t("dev.translations.coverage")}
+        </span>
+        <span
+          className={cn(
+            "text-sm font-extrabold",
+            coverage.missing.length === 0 ? "text-mint-deep" : "text-pink"
+          )}
+        >
+          {t("dev.translations.coverageValue", {
+            translated: coverage.translated,
+            total: coverage.total,
+          })}
+        </span>
+      </Tile>
+      {coverage.missing.length === 0 && coverage.unknown.length === 0 ? (
+        <EmptyNote>{t("dev.translations.complete")}</EmptyNote>
+      ) : (
+        <Tile className="space-y-1 bg-pink/10">
+          {coverage.missing.length > 0 && (
+            <p className="text-xs font-bold text-pink">
+              {t("dev.translations.missing")}: {coverage.missing.slice(0, 12).join(", ")}
+              {coverage.missing.length > 12 ? " +" + (coverage.missing.length - 12) : ""}
+            </p>
+          )}
+          {coverage.unknown.length > 0 && (
+            <p className="text-xs font-bold text-pink">
+              {t("dev.translations.unknown")}: {coverage.unknown.slice(0, 12).join(", ")}
+            </p>
+          )}
+        </Tile>
+      )}
+    </div>
   )
 }
 
@@ -629,10 +784,11 @@ function SectionBody({
   query: { isPending: boolean; error: unknown }
   children: React.ReactNode
 }) {
+  const { t } = useT()
   if (query.isPending)
     return (
       <p className="flex items-center gap-2 py-2 text-sm font-semibold text-navy-soft">
-        <Spinner /> Loading…
+        <Spinner /> {t("common.loading")}
       </p>
     )
   if (query.error)
@@ -665,6 +821,7 @@ function Tile({ className, ...props }: React.ComponentProps<"div">) {
 }
 
 function WalletBody() {
+  const { t } = useT()
   const query = useWallet()
   const { data } = query
   return (
@@ -677,7 +834,7 @@ function WalletBody() {
               {formatCents(data.balance, data.currency)}
             </p>
             <p className="text-xs font-bold tracking-wider text-navy-soft uppercase">
-              Balance
+              {t("account.wallet.balance")}
             </p>
           </Tile>
           <Tile className="flex-1 p-3.5 text-center">
@@ -685,7 +842,7 @@ function WalletBody() {
               {formatCents(data.bonuses, data.currency)}
             </p>
             <p className="text-xs font-bold tracking-wider text-navy-soft uppercase">
-              Bonuses
+              {t("account.wallet.bonuses")}
             </p>
           </Tile>
         </div>
@@ -695,6 +852,7 @@ function WalletBody() {
 }
 
 function ReferralsBody() {
+  const { t } = useT()
   const query = useReferrals()
   const { data } = query
   return (
@@ -705,7 +863,7 @@ function ReferralsBody() {
             variant="secondary"
             onClick={() => {
               navigator.clipboard.writeText(data.link)
-              toast.success("Referral link copied")
+              toast.success(t("account.referrals.copied"))
             }}
             className="h-auto w-full justify-between rounded-2xl bg-[#f1f4f8] px-4 py-3 text-sm font-bold text-navy hover:bg-[#e8edf3]"
           >
@@ -714,10 +872,10 @@ function ReferralsBody() {
           </Button>
           <div className="mt-3 flex gap-3 text-center">
             {[
-              { label: "Invited", value: String(data.invited) },
-              { label: "Sales", value: String(data.sales) },
+              { label: t("account.referrals.invited"), value: String(data.invited) },
+              { label: t("account.referrals.sales"), value: String(data.sales) },
               // income is integer cents
-              { label: "Income", value: formatCents(data.income) },
+              { label: t("account.referrals.income"), value: formatCents(data.income) },
             ].map(({ label, value }) => (
               <Tile key={label} className="flex-1">
                 <p className="text-lg font-extrabold text-navy">{value}</p>
@@ -734,6 +892,7 @@ function ReferralsBody() {
 }
 
 function VehiclesBody() {
+  const { t } = useT()
   const { guest } = useSessionScope()
   // guest: the plates on this session's own orders; signed in: the account's saved cars
   const query = useVehicles()
@@ -743,9 +902,7 @@ function VehiclesBody() {
       {data &&
         (data.length === 0 ? (
           <EmptyNote>
-            {guest
-              ? "Plates from the vignettes you buy here will appear here."
-              : "Vehicles from your orders will appear here."}
+            {guest ? t("account.vehicles.emptyGuest") : t("account.vehicles.empty")}
           </EmptyNote>
         ) : (
           <div className="space-y-2.5">
@@ -754,13 +911,103 @@ function VehiclesBody() {
                 <PlateBadge plate={v.plate} country={v.country} />
                 {v.vin_code && (
                   <p className="mt-1 px-1 text-xs font-semibold tracking-wider text-navy-soft">
-                    VIN: {v.vin_code}
+                    {t("account.vehicles.vin", { vin: v.vin_code })}
                   </p>
                 )}
               </div>
             ))}
           </div>
         ))}
+    </SectionBody>
+  )
+}
+
+/**
+ * The plate-rules manifest this build is validating with, checked against the
+ * conformance cases the API ships for it
+ * (`GET /public/vehicles/plate-rules/vectors`). Local validation is only
+ * worth having while it agrees with the server, and the rules change with a
+ * deploy — so a mismatch is something to see here rather than in rejected
+ * orders. Dev-only: nothing here is for a customer.
+ */
+function PlateRulesBody() {
+  const { t } = useT()
+  const rules = usePlateRules()
+  const vectors = usePlateRuleVectors()
+  const report =
+    rules.data && vectors.data
+      ? runPlateRuleVectors(rules.data, vectors.data.vectors)
+      : null
+
+  return (
+    <SectionBody query={{ isPending: rules.isPending || vectors.isPending, error: rules.error || vectors.error }}>
+      <div className="space-y-2.5">
+        <Tile className="flex items-center justify-between gap-2">
+          <span className="text-sm font-semibold text-navy-soft">
+            {t("dev.plateRules.version")}
+          </span>
+          <span className="text-sm font-extrabold text-navy">
+            {rules.data?.version ?? "—"}
+          </span>
+        </Tile>
+        <Tile className="flex items-center justify-between gap-2">
+          <span className="text-sm font-semibold text-navy-soft">
+            {t("dev.plateRules.language")}
+          </span>
+          <span className="text-sm font-extrabold text-navy">
+            {t("dev.plateRules.languageValue", {
+              language: rules.data?.language ?? "—",
+              count: rules.data?.languages?.length ?? "—",
+            })}
+          </span>
+        </Tile>
+        <Tile className="flex items-center justify-between gap-2">
+          <span className="text-sm font-semibold text-navy-soft">
+            {t("dev.plateRules.countries")}
+          </span>
+          <span className="text-sm font-extrabold text-navy">
+            {t("dev.plateRules.countriesValue", {
+              withRules: rules.data ? Object.keys(rules.data.countries).length : "—",
+              accepted: rules.data?.country.accepted.length ?? "—",
+            })}
+          </span>
+        </Tile>
+        {report && (
+          <Tile
+            className={cn(
+              "space-y-1",
+              report.failures.length > 0 && "bg-pink/10"
+            )}
+          >
+            <p className="flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold text-navy-soft">
+                {t("dev.plateRules.selfCheck")}
+              </span>
+              <span
+                className={cn(
+                  "text-sm font-extrabold",
+                  report.failures.length === 0 ? "text-mint-deep" : "text-pink"
+                )}
+              >
+                {t("dev.plateRules.selfCheckValue", {
+                  passed: report.passed,
+                  total: report.total,
+                })}
+              </span>
+            </p>
+            {report.failures.slice(0, 8).map((failure) => (
+              <p
+                key={`${failure.country}:${failure.plate}`}
+                className="text-xs font-semibold text-pink"
+              >
+                {failure.country.toUpperCase()} {failure.plate} — expected{" "}
+                {String(failure.valid)}, got {String(failure.got)}
+                {failure.errorType ? ` (${failure.errorType})` : ""}
+              </p>
+            ))}
+          </Tile>
+        )}
+      </div>
     </SectionBody>
   )
 }
@@ -774,6 +1021,7 @@ function VehiclesBody() {
  * even if it registered while signed out.
  */
 function PushBody() {
+  const { t } = useT()
   const { data: me } = useMe()
   const supported = webPushSupported()
   const subscription = usePushSubscription().data ?? null
@@ -783,7 +1031,7 @@ function PushBody() {
   const [last, setLast] = useState<"enable" | "disable" | null>(null)
 
   if (!supported) {
-    return <EmptyNote>This browser doesn't support push notifications.</EmptyNote>
+    return <EmptyNote>{t("account.push.unsupported")}</EmptyNote>
   }
 
   // live browser value — every mutation settling re-renders this component
@@ -797,29 +1045,29 @@ function PushBody() {
         ok: false,
         text:
           enable.error instanceof ApiRequestError && enable.error.type === "not_configured"
-            ? "Push notifications aren't set up on the server yet"
+            ? t("account.push.notConfigured")
             : apiErrorMessage(enable.error),
       }
     } else if (enable.data?.status === "denied") {
       status = {
         ok: false,
-        text: "Permission denied — reset it in the browser's site settings to retry",
+        text: t("account.push.denied"),
       }
     } else if (enable.data?.status === "dismissed") {
-      status = { ok: false, text: "Permission dismissed — nothing registered" }
+      status = { ok: false, text: t("account.push.dismissed") }
     } else if (enable.data?.status === "registered") {
       status = {
         ok: true,
         text: me?.email
-          ? `Registered — bound to ${me.email}`
-          : "Registered — orders placed from this browser will alert here",
+          ? t("account.push.registeredBound", { email: me.email })
+          : t("account.push.registered"),
       }
     }
   } else if (last === "disable") {
     if (disable.error) {
       status = { ok: false, text: apiErrorMessage(disable.error) }
     } else if (disable.isSuccess) {
-      status = { ok: true, text: "Notifications turned off on this device" }
+      status = { ok: true, text: t("account.push.turnedOff") }
     }
   }
 
@@ -835,9 +1083,7 @@ function PushBody() {
 
   return (
     <>
-      <p className="text-sm font-medium text-navy-soft">
-        Get order status alerts on this device, even with the tab closed.
-      </p>
+      <p className="text-sm font-medium text-navy-soft">{t("account.push.intro")}</p>
       <Button
         variant="brand"
         size="pill"
@@ -846,12 +1092,11 @@ function PushBody() {
         disabled={busy || permission === "denied"}
       >
         {busy && <Spinner />}
-        {subscription ? "Turn off notifications" : "Turn on notifications"}
+        {subscription ? t("account.push.turnOff") : t("account.push.turnOn")}
       </Button>
       {permission === "denied" && (
         <p className="mt-2 text-xs font-semibold text-navy-soft">
-          Blocked for this site — re-enable it in the browser's site settings to
-          retry.
+          {t("account.push.blocked")}
         </p>
       )}
       {status && (
@@ -874,6 +1119,7 @@ function PushBody() {
 }
 
 function SessionsBody() {
+  const { t } = useT()
   const query = useSessions()
   const { data } = query
   return (
@@ -883,16 +1129,24 @@ function SessionsBody() {
           {data.map((s) => (
             <Tile key={s.id} className="bg-[#f6f8fa]">
               <p className="flex items-center gap-2 text-sm font-extrabold text-navy">
-                {s.device_name || "Unknown device"}
+                {s.device_name || t("account.sessions.unknownDevice")}
                 {s.current && (
                   <Badge className="rounded-full bg-mint/20 px-2 py-0.5 text-[10px] font-extrabold tracking-wider text-mint-deep uppercase hover:bg-mint/20">
-                    This device
+                    {t("account.sessions.thisDevice")}
                   </Badge>
                 )}
               </p>
               <p className="mt-0.5 text-xs font-semibold text-navy-soft">
-                {s.ip ?? "—"} · created {formatDate(s.created_at)}
-                {s.last_used_at ? ` · last used ${formatDate(s.last_used_at)}` : ""}
+                {s.last_used_at
+                  ? t("account.sessions.metaLastUsed", {
+                      ip: s.ip ?? "—",
+                      created: formatDate(s.created_at),
+                      lastUsed: formatDate(s.last_used_at),
+                    })
+                  : t("account.sessions.meta", {
+                      ip: s.ip ?? "—",
+                      created: formatDate(s.created_at),
+                    })}
               </p>
             </Tile>
           ))}
@@ -908,6 +1162,7 @@ function SessionsBody() {
  * nothing (it already sees all).
  */
 function ConsentsBody() {
+  const { t } = useT()
   const query = useConsents()
   const { data } = query
   const grant = useGrantConsent()
@@ -919,7 +1174,7 @@ function ConsentsBody() {
       {data && (
         <>
           {data.length === 0 ? (
-            <EmptyNote>No partner apps have access to your full order history.</EmptyNote>
+            <EmptyNote>{t("account.consents.empty")}</EmptyNote>
           ) : (
             <div className="space-y-2">
               {data.map((c) => (
@@ -927,8 +1182,11 @@ function ConsentsBody() {
                   key={String(c.partner_id)}
                   className="bg-[#f6f8fa] text-sm font-semibold text-navy"
                 >
-                  Partner #{String(c.partner_id)} · {c.scope} · granted{" "}
-                  {formatDate(c.granted_at)}
+                  {t("account.consents.row", {
+                    id: String(c.partner_id),
+                    scope: c.scope,
+                    date: formatDate(c.granted_at),
+                  })}
                 </Tile>
               ))}
             </div>
@@ -942,12 +1200,13 @@ function ConsentsBody() {
               onClick={() =>
                 grant.mutate(undefined, {
                   onSuccess: () =>
-                    toast.success("Full account access granted to this app's partner"),
+                    toast.success(t("account.consents.granted")),
                   onError: (e) => toast.error(apiErrorMessage(e)),
                 })
               }
             >
-              {busy === "grant" && <Spinner className="text-white" />} Grant
+              {busy === "grant" && <Spinner className="text-white" />}{" "}
+              {t("account.consents.grant")}
             </Button>
             <Button
               variant="outline"
@@ -956,17 +1215,16 @@ function ConsentsBody() {
               disabled={busy !== null}
               onClick={() =>
                 revoke.mutate(undefined, {
-                  onSuccess: () => toast.success("Access revoked"),
+                  onSuccess: () => toast.success(t("account.consents.revoked")),
                   onError: (e) => toast.error(apiErrorMessage(e)),
                 })
               }
             >
-              {busy === "revoke" && <Spinner />} Revoke
+              {busy === "revoke" && <Spinner />} {t("account.consents.revoke")}
             </Button>
           </div>
           <p className="mt-2 text-xs font-medium text-navy-soft">
-            Granting lets this app's partner read your whole order history
-            (orders?scope=all). Revocation is immediate.
+            {t("account.consents.note")}
           </p>
         </>
       )}
@@ -976,12 +1234,15 @@ function ConsentsBody() {
 
 /** Signing out swaps the session too — caches reset the same way as sign-in. */
 function SignOutButtons() {
+  const { t } = useT()
   const logout = useAuthStore((s) => s.logout)
   const logoutAll = useAuthStore((s) => s.logoutAll)
   const signOut = useMutation({
     mutationFn: (which: "one" | "all") => (which === "one" ? logout() : logoutAll()),
     onSuccess: (_result, which) =>
-      toast.success(which === "one" ? "Signed out" : "Signed out everywhere"),
+      toast.success(
+        which === "one" ? t("account.signedOut") : t("account.signedOutAll")
+      ),
     onError: (e) => toast.error(apiErrorMessage(e)),
   })
   const busy = signOut.isPending ? signOut.variables : null
@@ -996,7 +1257,7 @@ function SignOutButtons() {
         onClick={() => signOut.mutate("one")}
       >
         {busy === "one" ? <Spinner className="text-white" /> : <LogOut className="size-4" />}
-        Sign out
+        {t("account.signOut")}
       </Button>
       <Button
         variant="glass"
@@ -1006,7 +1267,7 @@ function SignOutButtons() {
         onClick={() => signOut.mutate("all")}
       >
         {busy === "all" ? <Spinner className="text-white" /> : <LogOut className="size-4" />}
-        Sign out everywhere
+        {t("account.signOutAll")}
       </Button>
     </div>
   )

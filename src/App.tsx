@@ -9,10 +9,16 @@ import { SupportPage } from "@/pages/SupportPage"
 import { AccountPage } from "@/pages/AccountPage"
 import { NotificationsPage } from "@/pages/NotificationsPage"
 import { dropSessionQueries, queryClient } from "@/lib/query"
+import { useLanguage } from "@/i18n"
 import { useAuthStore } from "@/stores/auth"
 
 export default function App() {
   const bootstrap = useAuthStore((s) => s.bootstrap)
+  // Subscribing here re-renders the whole tree when the language changes,
+  // which is what updates the components that read copy through the bare
+  // `t()` (module-level helpers, formatters) rather than `useT()`. See the
+  // note in src/i18n/index.ts.
+  useLanguage()
 
   useEffect(() => {
     void bootstrap()

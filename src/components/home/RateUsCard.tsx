@@ -1,6 +1,7 @@
 import { Star, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { useT } from "@/i18n"
 import { useMe } from "@/queries/me"
 import { useDismissRatePrompt } from "@/queries/rating"
 import { useRatingUiStore } from "@/stores/rating"
@@ -13,6 +14,7 @@ import { useRatingUiStore } from "@/stores/rating"
  * profile flags alone decide whether it exists.
  */
 export function RateUsCard() {
+  const { t } = useT()
   const { data: me } = useMe()
   const openSheet = useRatingUiStore((s) => s.openSheet)
   const dismiss = useDismissRatePrompt()
@@ -30,15 +32,15 @@ export function RateUsCard() {
           className="min-w-0 flex-1 text-left outline-none"
           onClick={() => openSheet("anywhere")}
         >
-          <p className="text-[15px] font-extrabold text-navy">Enjoying vignette.id?</p>
+          <p className="text-[15px] font-extrabold text-navy">{t("home.rate.title")}</p>
           <p className="text-[13px] font-semibold text-navy-soft">
-            Rate the app — it takes ten seconds
+            {t("home.rate.subtitle")}
           </p>
         </button>
         <Button
           variant="ghost"
           size="icon"
-          aria-label="Not now"
+          aria-label={t("common.notNow")}
           className="shrink-0 text-navy-soft"
           disabled={dismiss.isPending}
           onClick={() => dismiss.mutate()}

@@ -32,7 +32,7 @@ import { useAuthStore } from "@/stores/auth"
  * explain itself. Roughly a quarter of desktop traffic runs a blocker, and
  * losing exactly the people who run one skews every number on the page.
  */
-const INGEST_PATH = "/public/insights/records"
+const INGEST_PATH = "/public/insights/events"
 
 const ANONYMOUS_KEY = "vignette_anonymous_id"
 const SESSION_KEY = "vignette_session_id"

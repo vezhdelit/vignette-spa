@@ -45,11 +45,8 @@ const FLUSH_MS = 2000
 /** A gap this long means the next event starts a new session. */
 const SESSION_IDLE_MS = 30 * 60 * 1000
 
-type Consent = "granted" | "denied" | "unknown"
-
 interface EventExtra {
   context?: Record<string, unknown>
-  consent?: Consent
   product?: string
   /**
    * The API's `order_id` is an integer column, but every id this app handles
@@ -73,7 +70,6 @@ interface IngestEvent {
   source: "web"
   anonymous_id: string | null
   session_id: string | null
-  consent: Consent
   product?: string
   order_id?: number
   context: Record<string, unknown>
@@ -293,9 +289,6 @@ export function track(
       source: "web",
       anonymous_id: anonymousId(),
       session_id: sessionId(),
-      // The SPA has no cookie banner: it runs where the shell around it owns
-      // consent, so it states what it knows rather than claiming permission.
-      consent: extra.consent || "unknown",
       ...(extra.product ? { product: extra.product } : {}),
       ...(asOrderId(extra.order_id) ? { order_id: asOrderId(extra.order_id) } : {}),
       context: {

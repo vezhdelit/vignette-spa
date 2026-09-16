@@ -3,8 +3,8 @@ import { currentLanguage } from "@/i18n"
 import { useAuthStore } from "@/stores/auth"
 
 /**
- * Event analytics for the SPA — the browser half of the pipeline the panel
- * reads (vignette.id docs/analytics/partner-api.md).
+ * Event insights for the SPA — the browser half of the pipeline the panel
+ * reads (vignette.id docs/insights/partner-api.md).
  *
  * Events go straight to the ingest endpoint as this app's own
  * public client: `X-Client-Id` identifies the partner, and the bearer token
@@ -18,7 +18,7 @@ import { useAuthStore } from "@/stores/auth"
  *     rejected batch — is swallowed. `track()` returns void, not a promise,
  *     so a click handler cannot accidentally await a page view.
  *  2. It never creates a session. `api()` will bootstrap a guest session for
- *     a request that needs auth; analytics must not be what triggers that,
+ *     a request that needs auth; insights must not be what triggers that,
  *     so it sends unauthenticated until a session exists on its own.
  *  3. It batches. A page view fires on every navigation; sending one request
  *     each would be a request per click. Events queue and flush on a short
@@ -26,11 +26,10 @@ import { useAuthStore } from "@/stores/auth"
  */
 
 /**
- * The quiet alias of /public/analytics/events. Identical endpoint, same
- * controller — but ad blockers match "/analytics/" and a trailing "/events"
- * as a matter of course, and a blocked request never reaches a server log to
- * explain itself. Roughly a quarter of desktop traffic runs a blocker, and
- * losing exactly the people who run one skews every number on the page.
+ * The ingest endpoint. No URL this app requests contains the word
+ * "analytics": ad blockers match it in a path and kill the request inside
+ * the tab, where no server log can explain the missing traffic. Measured —
+ * /public/insights/events is delivered, /public/analytics/events is not.
  */
 const INGEST_PATH = "/public/insights/events"
 
@@ -230,7 +229,7 @@ const deviceContext = (): Record<string, string> => {
 let queue: IngestEvent[] = []
 let timer: ReturnType<typeof setTimeout> | null = null
 
-/** True once a session exists; analytics never creates one (rule 2). */
+/** True once a session exists; insights never creates one (rule 2). */
 const hasSession = (): boolean => {
   try {
     return !!useAuthStore.getState().tokens
@@ -250,7 +249,7 @@ const send = (events: IngestEvent[]): void => {
     auth: hasSession(),
   }).catch(() => {
     // Dropped on purpose. A retry queue would mean holding events across
-    // reloads and re-sending duplicates; the pipeline treats analytics as
+    // reloads and re-sending duplicates; the pipeline treats insights as
     // lossy and the panel's numbers are read as trends, not as ledgers.
   })
 }
@@ -309,7 +308,7 @@ export function track(
       properties,
     })
   } catch {
-    /* analytics must never break the thing it is measuring */
+    /* insights must never break the thing it is measuring */
   }
 }
 

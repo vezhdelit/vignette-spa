@@ -1,11 +1,11 @@
 import { useEffect, useRef } from "react"
 import { useLocation } from "react-router-dom"
-import { flush, track, trackOncePerSession } from "@/lib/analytics"
+import { flush, track, trackOncePerSession } from "@/lib/insights"
 import { useAuthStore } from "@/stores/auth"
 
 /**
  * The lifecycle events no single component owns, kept in one place so the
- * SPA reports the same shape as the Nuxt site (plugins/analytics.client.js)
+ * SPA reports the same shape as the Nuxt site (plugins/insights.client.js)
  * and the two are comparable in the panel:
  *
  *   app.opened       once per session, and again when the tab comes back
@@ -18,7 +18,7 @@ import { useAuthStore } from "@/stores/auth"
  */
 
 const IDENTIFIED_KEY = "vignette_identified_for"
-/** Matches the session rotation window in lib/analytics. */
+/** Matches the session rotation window in lib/insights. */
 const SESSION_GAP_MS = 30 * 60 * 1000
 
 /** "/" → "index", "/vignettes" → "vignettes". The Pages breakdown reads it. */
@@ -27,7 +27,7 @@ const pageName = (pathname: string): string => {
   return trimmed || "index"
 }
 
-export function AnalyticsTracker() {
+export function InsightsTracker() {
   const location = useLocation()
   // Only a real account identifies; the guest session is not a person
   // signing in, it is how this app talks to the API at all.

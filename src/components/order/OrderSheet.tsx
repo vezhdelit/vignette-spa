@@ -13,7 +13,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
-import { track } from "@/lib/insights"
+import { track, trackCustom } from "@/lib/insights"
 import { Card, CardContent } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer"
@@ -289,6 +289,29 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   const autoPromo = autoPromoQuery.data?.valid ? autoPromoQuery.data : null
 
   /**
+   * The same event for a discount the server applied by itself, under
+   * `auto: true` — otherwise a promo report only ever shows the codes people
+   * typed, and a campaign running silently in the background is invisible in
+   * exactly the numbers meant to measure it. Once per code per sheet: the
+   * query re-runs whenever the order changes underneath it.
+   */
+  const reportedAutoPromo = useRef<string | null>(null)
+  useEffect(() => {
+    // Keyed by product as well as code, so the marker needs no resetting
+    // when the sheet reopens on something else — and writing it only here,
+    // in the effect that reads it, keeps it out of the reset effect.
+    const code = autoPromo?.promo?.code ?? null
+    const key = code && product ? `${product.name}:${code}` : null
+    if (!key || reportedAutoPromo.current === key) return
+    reportedAutoPromo.current = key
+    track(
+      "checkout.promo_applied",
+      { accepted: true, auto: true },
+      product ? { product: product.name } : {},
+    )
+  }, [autoPromo, product])
+
+  /**
    * Prices the applied code against the order as it stands. Runs on apply and
    * again whenever the order changes underneath it (period, date, flex,
    * plate): a code that no longer applies is dropped here rather than
@@ -304,6 +327,15 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
     validatePromo({ ...promoInput, code: appliedCode })
       .then((result) => {
         if (cancelled) return
+        // One name for both verdicts, with the reason code when it failed —
+        // "how many codes get refused and why" is the question, and two
+        // names would make it two queries. `auto: false`: this path only
+        // runs for a code somebody typed.
+        track(
+          "checkout.promo_applied",
+          { accepted: !!result.valid, auto: false },
+          product ? { product: product.name } : {},
+        )
         if (result.valid) {
           setPromo(result)
           setPromoError(null)
@@ -315,6 +347,17 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
       })
       .catch((error) => {
         if (cancelled) return
+        track(
+          "checkout.promo_applied",
+          {
+            accepted: false,
+            auto: false,
+            // the server's machine code (promo_expired, promo_limit_reached),
+            // never the message — the message is translated and unqueryable
+            reason: isPromoError(error) ? error.type : "error",
+          },
+          product ? { product: product.name } : {},
+        )
         setPromo(null)
         setAppliedCode(null)
         setPromoError(apiErrorMessage(error, t("promo.checkFailed")))
@@ -419,6 +462,29 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
     setAppliedCode(code)
   }
 
+  /**
+   * Flex on or off. Only a deliberate change counts: the sheet opens with it
+   * enabled, and reporting that default as a choice would make every opened
+   * checkout look like someone had opted in.
+   */
+  const onFlexEnabled = (next: boolean) => {
+    setFlexEnabled(next)
+    track(
+      "checkout.flex_toggled",
+      { enabled: next, tier: flexType },
+      { product: product.name },
+    )
+  }
+
+  const onFlexType = (next: "default" | "expanded") => {
+    setFlexType(next)
+    track(
+      "checkout.flex_toggled",
+      { enabled: flexEnabled, tier: next },
+      { product: product.name },
+    )
+  }
+
   const removePromo = () => {
     setAppliedCode(null)
     setPromo(null)
@@ -453,6 +519,10 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
         })
         return
       }
+      // The other half of checkout.plate_rejected: a plate the server
+      // accepted. Without it the rejection count has no denominator, and
+      // "is this country's rule wrong" cannot be answered.
+      track("checkout.vehicle_added", { country: plateCountry }, { product: product.name })
       const normalized = result.vehicles[0]?.plate
       if (normalized && normalized !== plate) setPlate(normalized)
     } catch {
@@ -517,7 +587,13 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
       const created = result.orders[0] ?? null
       track(
         "order.created",
-        { product: product.name, amount_eur: eurTotal ?? total },
+        {
+          product: product.name,
+          amount_eur: eurTotal ?? total,
+          // One order, one plate, in this app — sent anyway so the number
+          // means the same thing here as in a client that sells several.
+          vehicles: 1,
+        },
         { product: product.name, ...(created?.id ? { order_id: created.id } : {}) },
       )
       track(
@@ -556,6 +632,23 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   // called both after a successful payment and when the checkout is
   // abandoned — only the former is a purchase the rating sheet may follow
   const finish = () => {
+    // Leaving the payment step without the order having left CREATED is the
+    // only failure signal a web checkout gets: the payment itself happens in
+    // the provider's iframe, so a declined card, a closed 3-D Secure step
+    // and a change of mind all look the same from here. Without this event
+    // they also look the same as each other in the stream — an order stuck
+    // at CREATED, with checkout.payment_opened as the last thing that
+    // happened. `reason` says only what we actually know.
+    if (!paid) {
+      track(
+        "checkout.payment_failed",
+        { reason: "closed_unpaid" },
+        {
+          product: product.name,
+          ...(createdOrder?.id ? { order_id: createdOrder.id } : {}),
+        },
+      )
+    }
     void invalidateOrders()
     onClose()
     navigate("/")
@@ -569,6 +662,15 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
         finish()
         return
       }
+      // Closing before an order exists. The catalogue has no name for it —
+      // checkout.payment_failed is about a payment, and none was reached —
+      // and which step people leave on is this app's own question about its
+      // own two-step sheet, so it gets an app-scoped name.
+      trackCustom(
+        "checkout_abandoned",
+        { step, promo: !!activePromo, plate: !!plate.trim() },
+        { product: product.name },
+      )
       onClose()
     }
   }
@@ -909,9 +1011,9 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                     )}
                     <FlexPanel
                       enabled={flexEnabled}
-                      onEnabled={setFlexEnabled}
+                      onEnabled={onFlexEnabled}
                       type={flexType}
-                      onType={setFlexType}
+                      onType={onFlexType}
                       defaultPrice={flexOptions.find((f) => f.type === "default")?.price ?? 2.99}
                       expandedPrice={flexOptions.find((f) => f.type === "expanded")?.price ?? 5.98}
                       currency={currency}
@@ -1055,9 +1157,9 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                   <CardContent>
                     <FlexPanel
                       enabled={flexEnabled}
-                      onEnabled={setFlexEnabled}
+                      onEnabled={onFlexEnabled}
                       type={flexType}
-                      onType={setFlexType}
+                      onType={onFlexType}
                       defaultPrice={flexOptions.find((f) => f.type === "default")?.price ?? 2.99}
                       expandedPrice={flexOptions.find((f) => f.type === "expanded")?.price ?? 5.98}
                       currency={currency}

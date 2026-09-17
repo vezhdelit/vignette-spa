@@ -6,6 +6,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { apiErrorMessage } from "@/lib/api"
 import { useT } from "@/i18n"
 import { useLookupSupport, useVehicleLookup } from "@/queries/vehicles"
+import { track } from "@/lib/insights"
 import { cn } from "@/lib/utils"
 import type { VehicleLookup as VehicleLookupResult } from "@/types/api"
 
@@ -72,12 +73,18 @@ export function VehicleLookupRow({
   const run = async () => {
     try {
       const vehicle = await lookup.mutateAsync({ plate: plate.trim(), country })
+      // Both outcomes are the same event with a different `found` — a lookup
+      // that resolves nothing is the interesting half, because it is what
+      // says which registries are worth having. The plate itself never
+      // leaves the browser here: only the country and the verdict.
+      track("vehicle.lookup_used", { country, found: true })
       setFound({ key, vehicle })
       onVehicle(vehicle)
       if (!vehicle.vin_code) {
         toast.info(t("lookup.noVin"))
       }
     } catch (error) {
+      track("vehicle.lookup_used", { country, found: false })
       setFound(null)
       toast.error(apiErrorMessage(error, t("lookup.failed")))
     }

@@ -83,6 +83,7 @@ import {
 import { useDisablePush, useEnablePush, usePushSubscription } from "@/queries/push"
 import { usePlateRuleVectors, usePlateRules } from "@/queries/vehicles"
 import { cn } from "@/lib/utils"
+import { rememberSigninMethod, track, trackCustom } from "@/lib/insights"
 
 export function AccountPage() {
   const { t } = useT()
@@ -236,6 +237,11 @@ function SignInCard() {
       await renderGoogleButton(googleRef.current, {
         nonce,
         onCredential: (idToken) => {
+          // Google hands the credential back in-page rather than via a
+          // redirect, but the pair is reported the same way as the other two
+          // so the methods compare directly.
+          rememberSigninMethod("google")
+          track("user.signin_started", { method: "google" })
           void finishSocial("google", idToken, nonce).finally(() => {
             void armGoogle()
           })
@@ -267,6 +273,11 @@ function SignInCard() {
   }, [armGoogle, armApple])
 
   const onAppleClick = () => {
+    // The method is remembered as well as reported: Apple finishes after a
+    // full-page redirect back to this origin, and by then this component is
+    // gone. InsightsTracker reads it back to report user.signin_completed.
+    rememberSigninMethod("apple")
+    track("user.signin_started", { method: "apple" })
     // NO await before signInWithApple() — see lib/social.ts
     const nonce = appleNonce.current
     signInWithApple()
@@ -286,6 +297,10 @@ function SignInCard() {
   }
 
   const start = async () => {
+    // Asking for the code is the intent; the funnel's other half is
+    // user.signin_completed, which fires when the session actually appears.
+    rememberSigninMethod("otp")
+    track("user.signin_started", { method: "otp" })
     try {
       const result = await otpStart.mutateAsync(email.trim())
       setResendIn(result.resend_after)
@@ -584,7 +599,13 @@ function CurrencyBody() {
       <ToggleGroup
         type="single"
         value={currency}
-        onValueChange={(v) => v && isCurrency(v) && setCurrency(v)}
+        onValueChange={(v) => {
+          if (!v || !isCurrency(v)) return
+          // Which currencies are worth keeping, and whether anyone leaves
+          // the default. No standard name covers a display preference.
+          trackCustom("currency_changed", { currency: v, from: currency })
+          setCurrency(v)
+        }}
         spacing={0}
         aria-label={t("account.currency.label")}
         className="flex-wrap gap-1.5 rounded-2xl bg-brand-soft/40 p-1.5"
@@ -653,7 +674,14 @@ function LanguageBody() {
       <ToggleGroup
         type="single"
         value={explicit ? language : ""}
-        onValueChange={(value) => value && void setLanguage(value)}
+        onValueChange={(value) => {
+          if (!value) return
+          // A language picked by hand is a vote against what we detected —
+          // context.locale already says which language the app was in, so
+          // this event is specifically about the correction.
+          trackCustom("language_changed", { language: value, explicit: true })
+          void setLanguage(value)
+        }}
         spacing={0}
         aria-label={t("account.language.label")}
         className="flex-wrap gap-1.5 rounded-2xl bg-brand-soft/40 p-1.5"

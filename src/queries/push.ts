@@ -7,6 +7,7 @@ import {
   unsubscribe,
   webPushSupported,
 } from "@/lib/webpush"
+import { track, trackCustom } from "@/lib/insights"
 
 /**
  * Web push registration — the browser as a push install, mirroring what the
@@ -49,6 +50,14 @@ export function useEnablePush() {
       // first await in the click handler, so the browser still counts it as
       // a user gesture
       const permission = await Notification.requestPermission()
+      // The standard name, and the same one the native apps send for their
+      // own prompts — what share of installs we can actually reach is one
+      // question across all three, not three questions. A dismissed prompt
+      // counts as not granted: the user can be asked again, a denial cannot.
+      track("app.permission_set", {
+        permission: "notifications",
+        granted: permission === "granted",
+      })
       if (permission !== "granted") {
         return { status: permission === "denied" ? "denied" : "dismissed" }
       }
@@ -73,6 +82,14 @@ export function useEnablePush() {
 
       return { status: "registered", subscription }
     },
+    onError: () => {
+      // Granted the permission and still no push: the VAPID key is not
+      // configured, the browser refused the subscription, or POST /devices
+      // failed. Nothing in app.permission_set can show this — it is a
+      // registration that fell over after a yes, and is this app's own
+      // problem rather than a shared concept.
+      trackCustom("push_registration_failed")
+    },
     onSuccess: (result) => {
       if (result.status === "registered") {
         queryClient.setQueryData(pushKeys.subscription, result.subscription)
@@ -92,6 +109,12 @@ export function useDisablePush() {
         body: { installation_id: getInstallationId() },
       })
     },
-    onSuccess: () => queryClient.setQueryData(pushKeys.subscription, null),
+    onSuccess: () => {
+      // Turning push back off is a decision worth counting, and the
+      // catalogue has no name for it: app.permission_set is the OS prompt,
+      // which is not what happened here — the permission is still granted.
+      trackCustom("push_disabled")
+      queryClient.setQueryData(pushKeys.subscription, null)
+    },
   })
 }

@@ -27,7 +27,19 @@ self.addEventListener("push", (event) => {
 // one, opening a fresh one otherwise.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close()
-  const target = "/"
+
+  // Tell the app it was opened by a push, so it can report
+  // `notification.opened` and `app.opened` with via: "push". Nothing else
+  // can know: a service worker has no client credential and no session, so
+  // it cannot send an event itself, and a navigation to "/" is
+  // indistinguishable from someone typing the address. InsightsTracker reads
+  // these and strips them from the URL immediately, so they never reach a
+  // page view or a shared link.
+  const data = event.notification.data || {}
+  const params = new URLSearchParams({ vsrc: "push" })
+  if (data.type) params.set("vtype", String(data.type))
+  if (data.order_id) params.set("void", String(data.order_id))
+  const target = `/?${params.toString()}`
 
   event.waitUntil(
     self.clients

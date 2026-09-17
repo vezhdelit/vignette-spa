@@ -1,6 +1,7 @@
 import { api } from "@/lib/api"
 import { currentLanguage } from "@/i18n"
 import { useAuthStore } from "@/stores/auth"
+import { getInstallationId } from "@/lib/webpush"
 
 /**
  * Event insights for the SPA — the browser half of the pipeline the panel
@@ -33,11 +34,63 @@ import { useAuthStore } from "@/stores/auth"
  */
 const INGEST_PATH = "/public/insights/events"
 
-const ANONYMOUS_KEY = "vignette_anonymous_id"
 const SESSION_KEY = "vignette_session_id"
 const SESSION_SEEN_KEY = "vignette_session_seen_at"
 const REFERRER_KEY = "vignette_session_referrer"
 const ONCE_PREFIX = "vignette_tracked_"
+
+/**
+ * The shared catalogue (vignette.id docs/insights/partner-api.md). Using
+ * these names for these things is what makes this app's funnel comparable
+ * with the website's and the native apps' — a synonym of our own would split
+ * every report. Typed as a union so a typo is a build error rather than a
+ * name nobody notices is missing for a month.
+ *
+ * `order.paid`, `order.activated` and `order.refunded` are deliberately
+ * absent: the server emits those itself, once per order, from the payment
+ * and fulfilment it actually observes. A client must never send them.
+ */
+export const STANDARD_EVENTS = [
+  "app.opened",
+  "app.link_opened",
+  "app.permission_set",
+  "notification.opened",
+  "page.viewed",
+  "product.viewed",
+  "checkout.started",
+  "checkout.vehicle_added",
+  "checkout.plate_rejected",
+  "checkout.flex_toggled",
+  "checkout.promo_applied",
+  "checkout.payment_opened",
+  "checkout.payment_failed",
+  "order.created",
+  "user.identified",
+  "user.signin_started",
+  "user.signin_completed",
+  "vehicle.lookup_used",
+  "offer.viewed",
+  "offer.clicked",
+  "offer.dismissed",
+] as const
+
+export type StandardEvent = (typeof STANDARD_EVENTS)[number]
+
+/**
+ * Namespace for this app's own events — the ones the shared catalogue has no
+ * name for because only this app does them (see `trackCustom`).
+ *
+ * Ingest accepts any well-formed name, so nothing breaks if this does not
+ * match the partner's prefix. It only matters if someone wants to *register*
+ * these in the tracking plan, which is a panel action: a partner's own types
+ * must start with that partner's prefix, shown as `prefix` in
+ * `GET /public/insights/event-types`. Set the env var to it when you get
+ * there.
+ */
+const CUSTOM_PREFIX: string = import.meta.env.VITE_VIGNETTE_INSIGHTS_PREFIX || "spa"
+
+/** `object.action`, lowercase snake_case — what the API's NAME_RE accepts. */
+const NAME_RE = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/
 
 /** The API takes at most 50 events per request; stay well inside it. */
 const MAX_BATCH = 20
@@ -115,9 +168,22 @@ const remembered = (storage: Storage, key: string): string | null => {
  * One id per browser, so a guest's events and the same person's events after
  * signing in resolve to one person. Survives sign-out on purpose: it is the
  * device, not the account.
+ *
+ * **It has to be the installation_id**, not an id of its own. The server
+ * emits `order.paid` and `order.activated` itself and stamps each with the
+ * order's `installation_id` as that event's `anonymous_id` — that stamp is
+ * the only thing joining a server-side purchase to the browsing that led to
+ * it. A guest has no user_id to fall back on, so two different uuids here
+ * mean the funnel events belong to one person and the purchase to another,
+ * and checkout-to-paid conversion reads 0% however many orders arrive.
+ * Nothing in any response says so: the events all land, the last funnel step
+ * is simply always empty.
+ *
+ * This used to mint its own `vignette_anonymous_id` while orders, promos and
+ * push all sent `vignette-spa.install` — exactly that split.
  */
 export const anonymousId = (): string | null =>
-  typeof window === "undefined" ? null : remembered(window.localStorage, ANONYMOUS_KEY)
+  typeof window === "undefined" ? null : getInstallationId()
 
 /**
  * One id per tab, rotated after a long absence so "a session" means a visit
@@ -140,6 +206,41 @@ export const sessionId = (): string | null => {
   }
   write(window.sessionStorage, SESSION_SEEN_KEY, String(now))
   return remembered(window.sessionStorage, SESSION_KEY)
+}
+
+/**
+ * The sign-in method, carried from `user.signin_started` to
+ * `user.signin_completed`.
+ *
+ * Apple finishes after a full-page redirect away and back (the Services ID's
+ * return URL is this origin), so the component that started the sign-in — and
+ * every field on it — is gone by the time it succeeds. sessionStorage
+ * survives that round trip in the same tab; component state does not.
+ */
+const SIGNIN_METHOD_KEY = "vignette_signin_method"
+
+export type SigninMethod = "otp" | "apple" | "google" | "guest"
+
+export const rememberSigninMethod = (method: SigninMethod): void => {
+  if (typeof window !== "undefined") write(window.sessionStorage, SIGNIN_METHOD_KEY, method)
+}
+
+/**
+ * Reads and clears. Consuming it is what keeps a later reload — where the
+ * store simply rehydrates an existing session — from looking like a second
+ * sign-in.
+ */
+export const takeSigninMethod = (): SigninMethod | null => {
+  if (typeof window === "undefined") return null
+  const value = read(window.sessionStorage, SIGNIN_METHOD_KEY)
+  if (value) {
+    try {
+      window.sessionStorage.removeItem(SIGNIN_METHOD_KEY)
+    } catch {
+      /* ignore */
+    }
+  }
+  return (value as SigninMethod) || null
 }
 
 /**
@@ -276,9 +377,41 @@ const enqueue = (event: IngestEvent): void => {
  * can await it, and it cannot throw.
  */
 export function track(
-  name: string,
+  name: StandardEvent,
   properties: Record<string, unknown> = {},
   extra: EventExtra = {},
+): void {
+  send_(name, properties, extra)
+}
+
+/**
+ * Record one of **this app's own** events — something the shared catalogue
+ * has no name for, because only this app does it: the rating sheet, the
+ * language switch, a checkout left at a particular step.
+ *
+ * Pass the bare action (`rating_submitted`); the namespace is added here, so
+ * every one of them sorts together in the panel and none can be mistaken for
+ * a standard name later. A name the API would reject is dropped rather than
+ * sent — it would only come back as `invalid_name` in the rejection log.
+ *
+ * Reach for a standard name first. A custom name is carried forever too, and
+ * one invented for something the catalogue already covers costs exactly the
+ * comparability the catalogue exists to give.
+ */
+export function trackCustom(
+  action: string,
+  properties: Record<string, unknown> = {},
+  extra: EventExtra = {},
+): void {
+  const name = action.includes(".") ? action : `${CUSTOM_PREFIX}.${action}`
+  if (!NAME_RE.test(name)) return
+  send_(name, properties, extra)
+}
+
+function send_(
+  name: string,
+  properties: Record<string, unknown>,
+  extra: EventExtra,
 ): void {
   try {
     if (typeof window === "undefined") return
@@ -311,15 +444,29 @@ export function track(
  */
 export function trackOncePerSession(
   key: string,
-  name: string,
+  name: StandardEvent,
   properties: Record<string, unknown> = {},
   extra: EventExtra = {},
 ): void {
-  if (typeof window !== "undefined") {
-    const storageKey = ONCE_PREFIX + key
-    // No storage: track every time rather than never.
-    if (read(window.sessionStorage, storageKey)) return
-    write(window.sessionStorage, storageKey, "1")
-  }
-  track(name, properties, extra)
+  if (onceThisSession(key)) track(name, properties, extra)
+}
+
+/** `trackOncePerSession` for one of this app's own names. */
+export function trackCustomOncePerSession(
+  key: string,
+  action: string,
+  properties: Record<string, unknown> = {},
+  extra: EventExtra = {},
+): void {
+  if (onceThisSession(key)) trackCustom(action, properties, extra)
+}
+
+/** True the first time a key is asked for in this session, false after. */
+function onceThisSession(key: string): boolean {
+  if (typeof window === "undefined") return true
+  const storageKey = ONCE_PREFIX + key
+  // No storage: track every time rather than never.
+  if (read(window.sessionStorage, storageKey)) return false
+  write(window.sessionStorage, storageKey, "1")
+  return true
 }

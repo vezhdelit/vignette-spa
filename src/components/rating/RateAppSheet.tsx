@@ -15,6 +15,7 @@ import { useT, type MessageKey } from "@/i18n"
 import { useMe } from "@/queries/me"
 import { useDismissRatePrompt, useSubmitRating } from "@/queries/rating"
 import { useRatingUiStore } from "@/stores/rating"
+import { trackCustom } from "@/lib/insights"
 import { cn } from "@/lib/utils"
 
 /**
@@ -59,7 +60,14 @@ export function RateAppSheet() {
   useEffect(() => {
     if (purchaseTick === handledTick.current || !me) return
     handledTick.current = purchaseTick
-    if (me.rate_prompt === "after_purchase") openSheet("after_purchase")
+    if (me.rate_prompt === "after_purchase") {
+      // The app's own funnel: shown → rated or dismissed. Nothing in the
+      // shared catalogue describes a rating prompt, and inventing a standard
+      // name for something only this app has would put a name in front of
+      // every partner that means nothing to them.
+      trackCustom("rating_prompt_shown", { source: "after_purchase" })
+      openSheet("after_purchase")
+    }
   }, [purchaseTick, me, openSheet])
 
   const [rating, setRating] = useState(0)
@@ -70,7 +78,10 @@ export function RateAppSheet() {
   // fresh form for the next open — reset on close, not in an effect on open
   const close = () => {
     // shown by the server's decision and closed unrated → tell it
-    if (!thanks && source !== "manual") dismiss.mutate()
+    if (!thanks && source !== "manual") {
+      trackCustom("rating_dismissed", { source })
+      dismiss.mutate()
+    }
     closeSheet()
     setRating(0)
     setHover(0)
@@ -89,6 +100,16 @@ export function RateAppSheet() {
     if (!rating) return
     try {
       const state = await submit.mutateAsync({ rating, comment })
+      // The score is the point of the event. `comment` deliberately never
+      // goes near it: free text people wrote is content, and the stream
+      // holds none — it would also be the one place a plate or an email
+      // could reach it.
+      trackCustom("rating_submitted", {
+        rating,
+        commented: comment.trim().length > 0,
+        store_review: Boolean(state.store_review),
+        source,
+      })
       setThanks({ storeReview: Boolean(state.store_review) })
     } catch (e) {
       // 400 messages are written for the user — show them as they are

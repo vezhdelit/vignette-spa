@@ -13,10 +13,8 @@ import type {
   AppNotification,
   Consent,
   NotificationsSummary,
-  Referrals,
   SessionInfo,
   Vehicle,
-  Wallet,
 } from "@/types/api"
 
 /**
@@ -30,8 +28,6 @@ import type {
 
 export const accountKeys = {
   all: (scope: string) => ["account", scope] as const,
-  wallet: (scope: string) => ["account", scope, "wallet"] as const,
-  referrals: (scope: string) => ["account", scope, "referrals"] as const,
   vehicles: (scope: string) => ["account", scope, "vehicles"] as const,
   /** root of everything notification-shaped (list + summary) */
   notifications: (scope: string) => ["account", scope, "notifications"] as const,
@@ -43,24 +39,9 @@ export const accountKeys = {
   consents: (scope: string) => ["account", scope, "consents"] as const,
 }
 
-export function useWallet() {
-  const { scope, ready, guest } = useSessionScope()
-  return useQuery({
-    queryKey: accountKeys.wallet(scope),
-    // balance/bonuses arrive as integer cents
-    queryFn: () => apiResult<Wallet>("/public/me/wallet"),
-    enabled: ready && !guest,
-  })
-}
-
-export function useReferrals() {
-  const { scope, ready, guest } = useSessionScope()
-  return useQuery({
-    queryKey: accountKeys.referrals(scope),
-    queryFn: () => apiResult<Referrals>("/public/me/referrals"),
-    enabled: ready && !guest,
-  })
-}
+// The wallet moved to queries/wallet.ts and referrals to queries/referrals.ts
+// when each grew past a single read — top-ups and the statement, the invited
+// list, earnings and claiming a code. Their Account sections import there.
 
 /**
  * GET /public/me/vehicles — guest ok. Signed in: the account's saved cars.

@@ -46,6 +46,7 @@ import {
   addDays,
   dayStart,
   formatDate,
+  formatCents,
   formatDayMonth,
   formatPrice,
   periodLabel,
@@ -77,6 +78,7 @@ import {
   validatePromo,
   type PromoValidateInput,
 } from "@/queries/promos"
+import { useInvalidateWallet, useWallet } from "@/queries/wallet"
 import {
   firstInvalid,
   usePlateRules,
@@ -97,7 +99,9 @@ const RESTRICTION_KEYS: Record<string, MessageKey> = {
 
 // "paying" covers the success screen too: it shows once the polled order
 // leaves CREATED (see `paid` below), no extra state transition needed
-type Step = "order" | "confirm" | "creating" | "paying"
+// "paid" is the wallet-covered case: the order came back already PENDING,
+// so there is no checkout to show and nothing to poll — straight to done.
+type Step = "order" | "confirm" | "creating" | "paying" | "paid"
 
 interface OrderSheetProps {
   product: CatalogProduct | null
@@ -175,6 +179,14 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   const [promoError, setPromoError] = useState<string | null>(null)
   const [promoChecking, setPromoChecking] = useState(false)
   const [paymentLink, setPaymentLink] = useState<string | null>(null)
+  // Pay (part of) this order from the wallet. Signed-in sessions only — a
+  // guest has no wallet — and only while the server says the feature is on.
+  const [useWalletBalance, setUseWalletBalance] = useState(false)
+  const walletQuery = useWallet()
+  const wallet = walletQuery.data ?? null
+  const walletAvailable =
+    !isGuest && Boolean(wallet?.checkout.enabled) && (wallet?.total ?? 0) > 0
+  const invalidateWallet = useInvalidateWallet()
   // Per opened sheet, not per render: how many plates this buyer tried
   // before one was accepted.
   const plateAttempts = useRef(0)
@@ -570,6 +582,10 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
           // the code the user applied; without one the server still picks the
           // best auto campaign for this order by itself
           ...(appliedCode ? { promo_code: appliedCode } : {}),
+          // The server takes min(wallet, order total) — bonuses first — and
+          // reserves it against the order right away, so what the payment
+          // page charges is already net of it.
+          ...(useWalletBalance && walletAvailable ? { wallet: { use: true } } : {}),
           ...(isGuest ? { email: email.trim() } : {}),
           ...(driverInfoRequired
             ? {
@@ -601,9 +617,24 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
         { amount_eur: eurTotal ?? total },
         { product: product.name, ...(created?.id ? { order_id: created.id } : {}) },
       )
+      // The wallet may have covered the whole order, in which case there is
+      // nothing to pay: no payment link comes back and the order is already
+      // PENDING. Branch on payment.status, never on the link being there.
+      if (result.payment?.status === "paid") {
+        void invalidateWallet()
+        setPaymentLink(null)
+        setStep("paid")
+        return
+      }
+
+      if (result.payment?.wallet?.applied) {
+        // part-paid from the wallet: the balance moved, so refresh it
+        void invalidateWallet()
+      }
+
       // shown in an in-sheet iframe (the pay page ships
       // `frame-ancestors *` exactly for this embedded-webview use)
-      setPaymentLink(result.payment_link)
+      setPaymentLink(result.payment_link ?? null)
       setStep("paying")
     } catch (e) {
       if (
@@ -690,6 +721,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
           <PaymentModal paymentLink={paymentLink} onClose={finish} />
         )}
         {step === "paying" && paid && <DoneScreen onFinish={finish} />}
+        {step === "paid" && <DoneScreen onFinish={finish} />}
 
         {(step === "order" || step === "confirm") && (
           // plain block scroller — a flex column would give overflow-x rows an
@@ -1175,6 +1207,34 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                       onApply={applyPromo}
                       onRemove={removePromo}
                     />
+
+                    {/* Pay from the wallet. Only offered when there is
+                        actually money in it and the server says the feature
+                        is on; a guest never sees it (no wallet). */}
+                    {walletAvailable && wallet && (
+                      <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-2xl bg-white/15 px-3 py-3">
+                        <Checkbox
+                          checked={useWalletBalance}
+                          onCheckedChange={(v) => setUseWalletBalance(v === true)}
+                          className="mt-0.5 size-6 shrink-0 rounded-md border-2 border-white/80 bg-white/15 data-checked:border-white data-checked:bg-white data-checked:text-brand"
+                        />
+                        <span className="min-w-0 flex-1 leading-snug">
+                          <span className="block text-[15px] font-extrabold text-white">
+                            {t("order.wallet.use", {
+                              amount: formatCents(wallet.total, wallet.currency),
+                            })}
+                          </span>
+                          <span className="block text-[13px] font-semibold text-white/75">
+                            {wallet.bonuses > 0
+                              ? t("order.wallet.split", {
+                                  bonuses: formatCents(wallet.bonuses, wallet.currency),
+                                  balance: formatCents(wallet.balance, wallet.currency),
+                                })
+                              : t("order.wallet.note")}
+                          </span>
+                        </span>
+                      </label>
+                    )}
                     <label className="mt-4 flex cursor-pointer items-start gap-3 px-1">
                       <Checkbox
                         checked={terms}

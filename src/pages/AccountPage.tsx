@@ -9,7 +9,6 @@ import {
   ChevronDown,
   ChevronRight,
   Coins,
-  Copy,
   Gift,
   LogOut,
   MonitorSmartphone,
@@ -46,7 +45,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { PlateBadge } from "@/components/order/PlateBadge"
 import { NotificationsList } from "@/components/notifications/NotificationsList"
 import { apiErrorMessage, ApiRequestError } from "@/lib/api"
-import { formatCents, formatDate } from "@/lib/format"
+import { formatDate } from "@/lib/format"
 import {
   detectLanguage,
   languageName,
@@ -74,12 +73,13 @@ import {
   useConsents,
   useGrantConsent,
   useNotificationsSummary,
-  useReferrals,
   useRevokeConsent,
   useSessions,
   useVehicles,
-  useWallet,
 } from "@/queries/account"
+// Both outgrew a single read, so each has its own section component now.
+import { WalletBody } from "@/components/wallet/WalletBody"
+import { ReferralsBody } from "@/components/referrals/ReferralsBody"
 import { useDisablePush, useEnablePush, usePushSubscription } from "@/queries/push"
 import { usePlateRuleVectors, usePlateRules } from "@/queries/vehicles"
 import { cn } from "@/lib/utils"
@@ -846,77 +846,6 @@ function EmptyNote({ children }: { children: React.ReactNode }) {
 /** the light stat / list tile used inside the sections */
 function Tile({ className, ...props }: React.ComponentProps<"div">) {
   return <div className={cn("rounded-2xl bg-[#f1f4f8] p-3", className)} {...props} />
-}
-
-function WalletBody() {
-  const { t } = useT()
-  const query = useWallet()
-  const { data } = query
-  return (
-    <SectionBody query={query}>
-      {data && (
-        <div className="flex gap-3">
-          <Tile className="flex-1 p-3.5 text-center">
-            {/* balance/bonuses arrive as integer cents */}
-            <p className="text-2xl font-extrabold text-navy">
-              {formatCents(data.balance, data.currency)}
-            </p>
-            <p className="text-xs font-bold tracking-wider text-navy-soft uppercase">
-              {t("account.wallet.balance")}
-            </p>
-          </Tile>
-          <Tile className="flex-1 p-3.5 text-center">
-            <p className="text-2xl font-extrabold text-navy">
-              {formatCents(data.bonuses, data.currency)}
-            </p>
-            <p className="text-xs font-bold tracking-wider text-navy-soft uppercase">
-              {t("account.wallet.bonuses")}
-            </p>
-          </Tile>
-        </div>
-      )}
-    </SectionBody>
-  )
-}
-
-function ReferralsBody() {
-  const { t } = useT()
-  const query = useReferrals()
-  const { data } = query
-  return (
-    <SectionBody query={query}>
-      {data && (
-        <>
-          <Button
-            variant="secondary"
-            onClick={() => {
-              navigator.clipboard.writeText(data.link)
-              toast.success(t("account.referrals.copied"))
-            }}
-            className="h-auto w-full justify-between rounded-2xl bg-[#f1f4f8] px-4 py-3 text-sm font-bold text-navy hover:bg-[#e8edf3]"
-          >
-            <span className="truncate">{data.link}</span>
-            <Copy className="ml-2 size-4 shrink-0 text-navy-soft" />
-          </Button>
-          <div className="mt-3 flex gap-3 text-center">
-            {[
-              { label: t("account.referrals.invited"), value: String(data.invited) },
-              { label: t("account.referrals.sales"), value: String(data.sales) },
-              // income is integer cents
-              { label: t("account.referrals.income"), value: formatCents(data.income) },
-            ].map(({ label, value }) => (
-              <Tile key={label} className="flex-1">
-                <p className="text-lg font-extrabold text-navy">{value}</p>
-                <p className="text-[11px] font-bold tracking-wider text-navy-soft uppercase">
-                  {label}
-                </p>
-              </Tile>
-            ))}
-          </div>
-        </>
-      )}
-    </SectionBody>
-  )
 }
 
 function VehiclesBody() {

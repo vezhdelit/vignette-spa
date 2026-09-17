@@ -91,18 +91,186 @@ export interface RatingState {
   store_review?: boolean
 }
 
+/* ---------------------------------------------------------------- wallet */
+
+/**
+ * GET /public/me/wallet. Every amount is INTEGER CENTS.
+ *
+ * Two pots: `balance` is money paid in (top-ups) plus referral rewards and
+ * is withdrawable; `bonuses` is top-up bonus tiers and promo cashback and
+ * can only be spent on an order. A checkout spends `bonuses` first — that
+ * order is `checkout.debit_order`, not something to hardcode here.
+ *
+ * `env` is which wallet this session sees: a sandbox client has its own
+ * sandbox wallet, topped up through Stripe test mode, and can never reach
+ * the live one.
+ */
 export interface Wallet {
+  env: "live" | "sandbox"
   balance: number
   bonuses: number
+  /** balance + bonuses — what a checkout could draw on */
+  total: number
   currency: string
+  top_up: {
+    enabled: boolean
+    currency: string
+    provider: "stripe"
+    min_amount: number
+    max_amount: number
+    /** the tiles to offer, each with the bonus that amount earns */
+    presets: { amount: number; bonus: number }[]
+    bonus_tiers: { from: number; bonus: number }[]
+  }
+  checkout: {
+    /** whether `wallet: { use: true }` on an order will be accepted */
+    enabled: boolean
+    /** which pot is spent first, e.g. ["bonuses", "balance"] */
+    debit_order: ("balance" | "bonuses")[]
+  }
 }
 
+/** The app-facing vocabulary of a ledger row (services/wallet.js#LEDGER_TYPES). */
+export type WalletEntryType =
+  | "top_up"
+  | "order_payment"
+  | "referral_reward"
+  | "cashback"
+  | "cashback_reversal"
+  | "withdrawal"
+  | "refund"
+  | "bonus"
+  | "welcome_bonus"
+  | "adjustment"
+  | "other"
+
+export type WalletEntryStatus = "pending" | "completed" | "cancelled"
+
+/** GET /public/me/wallet/transactions — one row of the statement, in cents. */
+export interface WalletTransaction {
+  id: number
+  type: WalletEntryType
+  direction: "credit" | "debit"
+  amount: number
+  /** top-ups only: the bonus the tier granted on top of `amount` */
+  bonus: number
+  pot: "balance" | "bonuses" | "mixed"
+  /** mixed rows (an order paid from both pots): how the amount split */
+  split: { balance: number | null; bonuses: number | null } | null
+  status: WalletEntryStatus
+  currency: string
+  order_id: number | null
+  description: string | null
+  created_at: number | null
+  updated_at: number | null
+}
+
+/**
+ * The Stripe block a NATIVE payment sheet would confirm. This app does not
+ * use it: the server also returns `payment_link`, a hosted page that mounts
+ * Stripe, PayPal and Monobank itself, so the SPA embeds that in an iframe
+ * exactly as it embeds an order's checkout and needs no Stripe SDK at all.
+ */
+export interface TopUpPayment {
+  provider: "stripe"
+  env: "live" | "sandbox"
+  publishable_key: string | null
+  client_secret: string
+  payment_intent_id: string
+  customer_id: string | null
+  customer_session_client_secret: string | null
+  customer_ephemeral_key_secret: string | null
+}
+
+/** POST /public/me/wallet/top-ups, and the GET :id poll. Cents. */
+export interface TopUp {
+  id: number
+  amount: number
+  bonus: number
+  currency: string
+  status: WalletEntryStatus
+  env: "live" | "sandbox"
+  provider: string | null
+  created_at: number | null
+  completed_at: number | null
+  /**
+   * The hosted checkout page. Present on create and, while the top-up is
+   * still pending, on the poll too — so a reload never loses it. Null once
+   * there is nothing left to pay.
+   */
+  payment_link: string | null
+  /** the raw Stripe intent, for native sheets; unused here */
+  payment?: TopUpPayment | null
+  /** poll and cancel: the balances after whatever this call did */
+  wallet?: Pick<Wallet, "balance" | "bonuses" | "total" | "currency">
+}
+
+/* ------------------------------------------------------------- referrals */
+
+/**
+ * GET /public/me/referrals. `income` is INTEGER CENTS and lands in the
+ * wallet's `balance`, which is what makes a reward spendable at checkout.
+ * Vocabulary: INVITER shared the link and gets the money, INVITED used it
+ * and their purchases pay.
+ */
 export interface Referrals {
   code: string
   link: string
   invited: number
   sales: number
   income: number
+  currency: string
+  rewards: {
+    /** cents paid to the inviter per purchase */
+    level_1: number
+    /** cents paid to the inviter's own inviter */
+    level_2: number
+    pot: "balance" | "bonuses"
+  }
+  /** who invited this account, if anyone */
+  inviter: ReferralInviter | null
+}
+
+/** Another account as a referral may show it — the email is masked server-side. */
+export interface ReferralInviter {
+  code: string | null
+  display_name: string | null
+}
+
+/** GET /public/me/referrals/invited — one person this account invited. */
+export interface ReferralInvited {
+  id: string
+  display_name: string | null
+  joined_at: number | null
+  /** rewarded purchases they have made */
+  purchases: number
+  /** cents they have earned this account so far */
+  earned: number
+}
+
+/** GET /public/me/referrals/earnings — one (order, level) reward paid. */
+export interface ReferralEarning {
+  id: number
+  level: number
+  amount: number
+  currency: string
+  order_id: number
+  invited_display_name: string | null
+  source: string
+  created_at: number
+}
+
+/** GET /public/referrals/:code — client credential only, before sign-in. */
+export interface ReferralLookup {
+  valid: boolean
+  inviter: ReferralInviter
+  rewards: { level_1: number; level_2: number; currency: string }
+}
+
+/** POST /public/me/referrals/claim */
+export interface ReferralClaimResult {
+  inviter: ReferralInviter
+  linked_at: number
 }
 
 /**
@@ -272,6 +440,18 @@ export interface CreateOrderBody {
     passport_country: string
     email?: string
   }
+  /**
+   * Pay from the wallet. The server reserves min(wallet, order total,
+   * max_amount) — bonuses before balance — when the order is created, and
+   * the payment page then charges only `payment.due`. When the wallet
+   * covers everything there is no payment_link at all and the order is
+   * already paid. Signed-in sessions only (a guest has no wallet).
+   */
+  wallet?: {
+    use: boolean
+    /** cents; cap what may be taken from the wallet for this order */
+    max_amount?: number
+  }
 }
 
 /**
@@ -289,7 +469,30 @@ export interface CreatedOrderStub {
 export interface CreateOrderResult {
   user_id: string
   orders: CreatedOrderStub[]
-  payment_link: string
+  /**
+   * Absent when the wallet covered the whole order — `payment.status` is
+   * then "paid" and the order is already PENDING, so there is nothing to
+   * open and nothing to poll. Branch on `payment.status`, not on this.
+   */
+  payment_link?: string
+  /**
+   * How this order is being paid. Present on every /public/me order
+   * response; `wallet` is null unless the request asked to use it.
+   */
+  payment?: OrderPaymentSummary
+}
+
+/** All cents. `due` is what the payment page will charge. */
+export interface OrderPaymentSummary {
+  status: "paid" | "payment_required"
+  total: number
+  due: number
+  currency: string
+  wallet: {
+    applied: number
+    from_balance: number
+    from_bonuses: number
+  } | null
 }
 
 /* --------------------------------------------------------------- catalog */

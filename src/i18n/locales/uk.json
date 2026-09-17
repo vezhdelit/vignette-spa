@@ -338,7 +338,6 @@
   "wallet.topUp.customAmount": "Інша сума ({min}–{max})",
   "wallet.topUp.outOfRange": "Введіть суму від {min} до {max}.",
   "wallet.topUp.willGetBonus": "Ви також отримаєте {bonus} бонусами.",
-  "wallet.topUp.continue": "Далі",
   "wallet.topUp.paying": "Оплата {amount}",
   "wallet.topUp.frameTitle": "Поповнення гаманця",
   "wallet.topUp.waiting": "Очікуємо на оплату…",
@@ -380,5 +379,7 @@
   "account.referrals.apply": "Застосувати",
   "account.referrals.claimed": "Вас запросив {name}",
   "account.referrals.alreadyInvited": "Цей акаунт уже має запрошувача.",
-  "account.referrals.codeInvalid": "Цей код запрошення більше не дійсний."
+  "account.referrals.codeInvalid": "Цей код запрошення більше не дійсний.",
+  "wallet.topUp.payAmount": "Поповнити на {amount}",
+  "wallet.topUp.currentBalance": "Зараз у вас {amount}"
 }

@@ -338,7 +338,6 @@
   "wallet.topUp.customAmount": "Inna kwota ({min}–{max})",
   "wallet.topUp.outOfRange": "Podaj kwotę od {min} do {max}.",
   "wallet.topUp.willGetBonus": "Dostaniesz też {bonus} w bonusach.",
-  "wallet.topUp.continue": "Dalej",
   "wallet.topUp.paying": "Płatność {amount}",
   "wallet.topUp.frameTitle": "Doładowanie portfela",
   "wallet.topUp.waiting": "Czekamy na płatność…",
@@ -380,5 +379,7 @@
   "account.referrals.apply": "Zastosuj",
   "account.referrals.claimed": "Zaprosił Cię {name}",
   "account.referrals.alreadyInvited": "To konto ma już osobę zapraszającą.",
-  "account.referrals.codeInvalid": "Ten kod zaproszenia jest już nieważny."
+  "account.referrals.codeInvalid": "Ten kod zaproszenia jest już nieważny.",
+  "wallet.topUp.payAmount": "Doładuj o {amount}",
+  "wallet.topUp.currentBalance": "Masz teraz {amount}"
 }

@@ -338,7 +338,6 @@
   "wallet.topUp.customAmount": "Другая сумма ({min}–{max})",
   "wallet.topUp.outOfRange": "Введите сумму от {min} до {max}.",
   "wallet.topUp.willGetBonus": "Вы также получите {bonus} бонусами.",
-  "wallet.topUp.continue": "Далее",
   "wallet.topUp.paying": "Оплата {amount}",
   "wallet.topUp.frameTitle": "Пополнение кошелька",
   "wallet.topUp.waiting": "Ждём оплату…",
@@ -380,5 +379,7 @@
   "account.referrals.apply": "Применить",
   "account.referrals.claimed": "Вас пригласил {name}",
   "account.referrals.alreadyInvited": "У этого аккаунта уже есть пригласивший.",
-  "account.referrals.codeInvalid": "Этот код приглашения больше не действует."
+  "account.referrals.codeInvalid": "Этот код приглашения больше не действует.",
+  "wallet.topUp.payAmount": "Пополнить на {amount}",
+  "wallet.topUp.currentBalance": "Сейчас у вас {amount}"
 }

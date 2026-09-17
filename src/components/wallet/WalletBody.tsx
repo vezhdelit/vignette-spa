@@ -3,7 +3,7 @@ import { Plus, TriangleAlert } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
-import { TopUpPanel } from "@/components/wallet/TopUpPanel"
+import { TopUpDrawer } from "@/components/wallet/TopUpDrawer"
 import { WalletTransactions } from "@/components/wallet/WalletTransactions"
 import { apiErrorMessage } from "@/lib/api"
 import { formatCents } from "@/lib/format"
@@ -80,7 +80,7 @@ export function WalletBody() {
         </p>
       )}
 
-      {data.top_up.enabled && !toppingUp && (
+      {data.top_up.enabled && (
         <Button
           variant="brand"
           size="pill"
@@ -92,13 +92,13 @@ export function WalletBody() {
         </Button>
       )}
 
-      {toppingUp && (
-        <TopUpPanel
-          wallet={data}
-          onClose={() => setToppingUp(false)}
-          onCredited={invalidateWallet}
-        />
-      )}
+      {/* the checkout opens in a drawer, like buying a vignette does */}
+      <TopUpDrawer
+        wallet={data}
+        open={toppingUp}
+        onClose={() => setToppingUp(false)}
+        onCredited={invalidateWallet}
+      />
 
       <p className="mt-4 text-xs font-bold tracking-wider text-navy-soft uppercase">
         {t("wallet.statement.title")}

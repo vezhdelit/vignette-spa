@@ -77,17 +77,26 @@ export const STANDARD_EVENTS = [
 export type StandardEvent = (typeof STANDARD_EVENTS)[number]
 
 /**
- * Namespace for this app's own events — the ones the shared catalogue has no
- * name for because only this app does them (see `trackCustom`).
+ * Optional namespace for this app's own events, and **empty on purpose**.
  *
- * Ingest accepts any well-formed name, so nothing breaks if this does not
- * match the partner's prefix. It only matters if someone wants to *register*
- * these in the tracking plan, which is a panel action: a partner's own types
- * must start with that partner's prefix, shown as `prefix` in
- * `GET /public/insights/event-types`. Set the env var to it when you get
- * there.
+ * Ingest enforces no prefix: it checks the shape of a name, not its owner.
+ * The prefix rule lives in POST /event-types and applies only to a *partner's*
+ * own types, so that two partners cannot collide or squat a standard name.
+ * This app is first-party — there is nobody to collide with — and a prefix
+ * costs it two things:
+ *
+ *  - It puts the app in the slot the object belongs in. Every name in the
+ *    catalogue is `object.action`; `spa.rating_submitted` says the app twice,
+ *    once here and once in `source`, and says the object nowhere.
+ *  - It blocks promotion. `rating.submitted` can become a standard name in
+ *    the panel tomorrow and every client keeps sending exactly what it sends
+ *    today; a prefixed name has to be renamed first, which breaks the series
+ *    at the point it starts being interesting.
+ *
+ * Set VITE_VIGNETTE_INSIGHTS_PREFIX to a partner prefix only if these ever
+ * need registering as one partner's own types rather than as shared names.
  */
-const CUSTOM_PREFIX: string = import.meta.env.VITE_VIGNETTE_INSIGHTS_PREFIX || "spa"
+const CUSTOM_PREFIX: string = import.meta.env.VITE_VIGNETTE_INSIGHTS_PREFIX || ""
 
 /** `object.action`, lowercase snake_case — what the API's NAME_RE accepts. */
 const NAME_RE = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/
@@ -385,25 +394,28 @@ export function track(
 }
 
 /**
- * Record one of **this app's own** events — something the shared catalogue
- * has no name for, because only this app does it: the rating sheet, the
- * language switch, a checkout left at a particular step.
+ * Record an event the shared catalogue has no name for yet — the rating
+ * sheet, the language switch, a checkout left at a particular step.
  *
- * Pass the bare action (`rating_submitted`); the namespace is added here, so
- * every one of them sorts together in the panel and none can be mistaken for
- * a standard name later. A name the API would reject is dropped rather than
- * sent — it would only come back as `invalid_name` in the rejection log.
+ * Name it the way the catalogue names things: `object.action`, lowercase,
+ * past tense, the object first. These are ordinary names that simply are not
+ * in the plan yet, and ingest stores them all the same; registering one is a
+ * panel action, and the day it happens nothing here changes.
  *
- * Reach for a standard name first. A custom name is carried forever too, and
- * one invented for something the catalogue already covers costs exactly the
- * comparability the catalogue exists to give.
+ * A name the API would reject is dropped rather than sent — it would only
+ * come back as `invalid_name` in the rejection log.
+ *
+ * Reach for a standard name first. A name is carried forever whether or not
+ * it is registered, and one invented for something the catalogue already
+ * covers costs exactly the comparability the catalogue exists to give.
  */
 export function trackCustom(
   action: string,
   properties: Record<string, unknown> = {},
   extra: EventExtra = {},
 ): void {
-  const name = action.includes(".") ? action : `${CUSTOM_PREFIX}.${action}`
+  const name =
+    CUSTOM_PREFIX && !action.includes(".") ? `${CUSTOM_PREFIX}.${action}` : action
   if (!NAME_RE.test(name)) return
   send_(name, properties, extra)
 }

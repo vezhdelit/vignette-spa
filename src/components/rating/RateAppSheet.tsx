@@ -65,7 +65,7 @@ export function RateAppSheet() {
       // shared catalogue describes a rating prompt, and inventing a standard
       // name for something only this app has would put a name in front of
       // every partner that means nothing to them.
-      trackCustom("rating_prompt_shown", { source: "after_purchase" })
+      trackCustom("rating.prompt_shown", { source: "after_purchase" })
       openSheet("after_purchase")
     }
   }, [purchaseTick, me, openSheet])
@@ -79,7 +79,7 @@ export function RateAppSheet() {
   const close = () => {
     // shown by the server's decision and closed unrated → tell it
     if (!thanks && source !== "manual") {
-      trackCustom("rating_dismissed", { source })
+      trackCustom("rating.dismissed", { source })
       dismiss.mutate()
     }
     closeSheet()
@@ -104,7 +104,7 @@ export function RateAppSheet() {
       // goes near it: free text people wrote is content, and the stream
       // holds none — it would also be the one place a plate or an email
       // could reach it.
-      trackCustom("rating_submitted", {
+      trackCustom("rating.submitted", {
         rating,
         commented: comment.trim().length > 0,
         store_review: Boolean(state.store_review),

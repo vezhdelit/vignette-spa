@@ -88,7 +88,7 @@ export function useEnablePush() {
       // failed. Nothing in app.permission_set can show this — it is a
       // registration that fell over after a yes, and is this app's own
       // problem rather than a shared concept.
-      trackCustom("push_registration_failed")
+      trackCustom("push.registration_failed")
     },
     onSuccess: (result) => {
       if (result.status === "registered") {
@@ -113,7 +113,7 @@ export function useDisablePush() {
       // Turning push back off is a decision worth counting, and the
       // catalogue has no name for it: app.permission_set is the OS prompt,
       // which is not what happened here — the permission is still granted.
-      trackCustom("push_disabled")
+      trackCustom("push.disabled")
       queryClient.setQueryData(pushKeys.subscription, null)
     },
   })

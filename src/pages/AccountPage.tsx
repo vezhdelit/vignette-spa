@@ -603,7 +603,7 @@ function CurrencyBody() {
           if (!v || !isCurrency(v)) return
           // Which currencies are worth keeping, and whether anyone leaves
           // the default. No standard name covers a display preference.
-          trackCustom("currency_changed", { currency: v, from: currency })
+          trackCustom("settings.currency_changed", { currency: v, from: currency })
           setCurrency(v)
         }}
         spacing={0}
@@ -679,7 +679,7 @@ function LanguageBody() {
           // A language picked by hand is a vote against what we detected —
           // context.locale already says which language the app was in, so
           // this event is specifically about the correction.
-          trackCustom("language_changed", { language: value, explicit: true })
+          trackCustom("settings.language_changed", { language: value, explicit: true })
           void setLanguage(value)
         }}
         spacing={0}

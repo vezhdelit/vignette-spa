@@ -667,7 +667,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
       // and which step people leave on is this app's own question about its
       // own two-step sheet, so it gets an app-scoped name.
       trackCustom(
-        "checkout_abandoned",
+        "checkout.abandoned",
         { step, promo: !!activePromo, plate: !!plate.trim() },
         { product: product.name },
       )

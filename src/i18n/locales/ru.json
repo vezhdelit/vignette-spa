@@ -374,11 +374,6 @@
   },
   "account.referrals.noPurchasesYet": "ещё без покупок",
   "account.referrals.level": "уровень {level}",
-  "account.referrals.haveCode": "Есть код приглашения?",
-  "account.referrals.codePlaceholder": "Код приглашения",
-  "account.referrals.apply": "Применить",
-  "account.referrals.claimed": "Вас пригласил {name}",
-  "account.referrals.alreadyInvited": "У этого аккаунта уже есть пригласивший.",
   "account.referrals.codeInvalid": "Этот код приглашения больше не действует.",
   "wallet.topUp.payAmount": "Пополнить на {amount}",
   "wallet.topUp.currentBalance": "Сейчас у вас {amount}"

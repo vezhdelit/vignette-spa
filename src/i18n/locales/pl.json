@@ -374,11 +374,6 @@
   },
   "account.referrals.noPurchasesYet": "jeszcze bez zakupów",
   "account.referrals.level": "poziom {level}",
-  "account.referrals.haveCode": "Masz kod zaproszenia?",
-  "account.referrals.codePlaceholder": "Kod zaproszenia",
-  "account.referrals.apply": "Zastosuj",
-  "account.referrals.claimed": "Zaprosił Cię {name}",
-  "account.referrals.alreadyInvited": "To konto ma już osobę zapraszającą.",
   "account.referrals.codeInvalid": "Ten kod zaproszenia jest już nieważny.",
   "wallet.topUp.payAmount": "Doładuj o {amount}",
   "wallet.topUp.currentBalance": "Masz teraz {amount}"

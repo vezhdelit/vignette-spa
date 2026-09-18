@@ -362,11 +362,6 @@
   },
   "account.referrals.noPurchasesYet": "noch keine Käufe",
   "account.referrals.level": "Stufe {level}",
-  "account.referrals.haveCode": "Einladungscode erhalten?",
-  "account.referrals.codePlaceholder": "Einladungscode",
-  "account.referrals.apply": "Anwenden",
-  "account.referrals.claimed": "{name} hat dich eingeladen",
-  "account.referrals.alreadyInvited": "Dieses Konto hat bereits eine einladende Person.",
   "account.referrals.codeInvalid": "Dieser Einladungscode ist nicht mehr gültig.",
   "wallet.topUp.payAmount": "{amount} aufladen",
   "wallet.topUp.currentBalance": "Du hast jetzt {amount}"

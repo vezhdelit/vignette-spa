@@ -4,7 +4,6 @@ import { QueryClientProvider } from "@tanstack/react-query"
 import { Toaster } from "@/components/ui/sonner"
 import { AppShell } from "@/components/layout/AppShell"
 import { InsightsTracker } from "@/components/InsightsTracker"
-import { InviteClaimer } from "@/components/referrals/InviteClaimer"
 import { HomePage } from "@/pages/HomePage"
 import { VignettesPage } from "@/pages/VignettesPage"
 import { SupportPage } from "@/pages/SupportPage"
@@ -40,7 +39,6 @@ export default function App() {
         <InsightsTracker />
         {/* spends an invite code the visitor arrived with, once there is an
             account to attach it to */}
-        <InviteClaimer />
         <Routes>
           <Route element={<AppShell />}>
             <Route path="/" element={<HomePage />} />

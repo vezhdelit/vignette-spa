@@ -267,12 +267,6 @@ export interface ReferralLookup {
   rewards: { level_1: number; level_2: number; currency: string }
 }
 
-/** POST /public/me/referrals/claim */
-export interface ReferralClaimResult {
-  inviter: ReferralInviter
-  linked_at: number
-}
-
 /**
  * GET /public/me/vehicles. Signed in: the account's saved cars (vehicles
  * table, numeric id). Guest: the distinct plates on the orders this session
@@ -428,6 +422,15 @@ export interface CreateOrderBody {
    * code stopped applying in between.
    */
   promo_code?: string
+  /**
+   * An invite code from a `/r/<code>` link. It links the buyer to the inviter
+   * only when this order is what CREATES their account — a guest checkout for
+   * an email nobody has bought with before. For a signed-in buyer, or a guest
+   * whose email already has an account, it does nothing: referral codes are
+   * for new customers. A bad code is ignored rather than rejected, so this
+   * field can never fail an order.
+   */
+  referral_code?: string
   /**
    * Driver-info products (e.g. Moldova): required when the selected period
    * carries "driver_info_required". Field names per

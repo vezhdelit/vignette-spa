@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 import { api, apiResult, configureApi, type StoredTokens } from "@/lib/api"
+import { clearPendingInviteCode, getPendingInviteCode } from "@/stores/invite"
 import type {
   EmailRequiredResult,
   OtpStartResult,
@@ -118,10 +119,14 @@ export const useAuthStore = create<AuthState>()(
             challenge_id: challengeId,
             code,
             device_name: deviceName(),
+            // Links the inviter only if this call is what creates the
+            // account. Ignored otherwise, and never an error.
+            referral_code: getPendingInviteCode() ?? undefined,
           },
           auth: false,
         })
         set({ tokens: toStoredTokens(result), user: result.user })
+        clearPendingInviteCode()
       },
 
       async fetchNonce() {
@@ -133,10 +138,15 @@ export const useAuthStore = create<AuthState>()(
       },
 
       async verifySocial(provider, token, nonce) {
+        const shared = {
+          nonce,
+          device_name: deviceName(),
+          referral_code: getPendingInviteCode() ?? undefined,
+        }
         const body =
           provider === "apple"
-            ? { identity_token: token, nonce, device_name: deviceName() }
-            : { id_token: token, nonce, device_name: deviceName() }
+            ? { identity_token: token, ...shared }
+            : { id_token: token, ...shared }
 
         const result = await apiResult<TokenPayload | EmailRequiredResult>(
           `/public/auth/${provider}/verify`,
@@ -144,6 +154,8 @@ export const useAuthStore = create<AuthState>()(
         )
 
         if ("status" in result && result.status === "email_required") {
+          // No account yet — link-email is the call that will create it, so
+          // the code has to stay put for that leg.
           return {
             status: "email_required",
             linkToken: result.link_token,
@@ -153,6 +165,7 @@ export const useAuthStore = create<AuthState>()(
 
         const tokens = result as TokenPayload
         set({ tokens: toStoredTokens(tokens), user: tokens.user })
+        clearPendingInviteCode()
         return { status: "ok" }
       },
 
@@ -166,11 +179,13 @@ export const useAuthStore = create<AuthState>()(
               challenge_id: challengeId,
               code,
               device_name: deviceName(),
+              referral_code: getPendingInviteCode() ?? undefined,
             },
             auth: false,
           }
         )
         set({ tokens: toStoredTokens(result), user: result.user })
+        clearPendingInviteCode()
       },
 
       async logout() {

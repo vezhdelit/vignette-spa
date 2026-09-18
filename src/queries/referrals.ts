@@ -1,15 +1,8 @@
 import { useMemo } from "react"
-import {
-  useInfiniteQuery,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query"
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query"
 import { api, apiResult } from "@/lib/api"
 import { useSessionScope } from "@/queries/session"
-import { walletKeys } from "@/queries/wallet"
 import type {
-  ReferralClaimResult,
   ReferralEarning,
   ReferralInvited,
   ReferralLookup,
@@ -117,32 +110,5 @@ export function useReferralLookup(code: string | null) {
     enabled: Boolean(code),
     retry: false,
     staleTime: 5 * 60_000,
-  })
-}
-
-/**
- * POST /public/me/referrals/claim — attach this account to the inviter
- * behind a code. Works for a brand-new account and an existing one, which
- * is the whole point: the web only ever linked at sign-up or checkout, so a
- * code that arrived any other way used to be lost.
- *
- * Nothing is paid for purchases made before the link, by design. The
- * refusals are final and worth telling apart in the UI: `already_invited`
- * (409), `self_link`, `loop` and `referral_code_invalid` (400).
- */
-export function useClaimReferral() {
-  const queryClient = useQueryClient()
-  const { scope } = useSessionScope()
-  return useMutation({
-    mutationFn: (code: string) =>
-      apiResult<ReferralClaimResult>("/public/me/referrals/claim", {
-        method: "POST",
-        body: { code: code.trim() },
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: referralKeys.all(scope) })
-      // being linked changes what the wallet can go on to earn
-      void queryClient.invalidateQueries({ queryKey: walletKeys.all(scope) })
-    },
   })
 }

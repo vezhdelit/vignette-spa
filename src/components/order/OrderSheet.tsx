@@ -57,6 +57,7 @@ import { plateErrorText, plateHintText } from "@/lib/plate-rules"
 import { isValidVin } from "@/lib/vehicle"
 import { getInstallationId } from "@/lib/webpush"
 import { useAuthStore } from "@/stores/auth"
+import { clearPendingInviteCode, getPendingInviteCode } from "@/stores/invite"
 import { useSettingsStore } from "@/stores/settings"
 import {
   catalogKeys,
@@ -139,6 +140,9 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   const eurCatalog = useCatalog("EUR").data ?? EMPTY_CATALOG
   const createOrder = useCreateOrder()
   const invalidateOrders = useInvalidateOrders()
+  // An invite code this visitor arrived with, for the one case an order can
+  // use it: a guest checkout that creates the account (see stores/invite.ts).
+  const pendingInvite = getPendingInviteCode()
   // the plate rules as data (GET /public/vehicles/plate-rules) — the form
   // validates locally and only asks the server at the step boundary
   const plateRules = usePlateRules().data
@@ -587,6 +591,11 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
           // page charges is already net of it.
           ...(useWalletBalance && walletAvailable ? { wallet: { use: true } } : {}),
           ...(isGuest ? { email: email.trim() } : {}),
+          // A guest checkout is where a buyer who never signed in gets their
+          // real account, so it is the one order call that can apply an
+          // invite code. Harmless on any other order — the account already
+          // exists and the server ignores it.
+          ...(isGuest && pendingInvite ? { referral_code: pendingInvite } : {}),
           ...(driverInfoRequired
             ? {
                 user: {
@@ -601,6 +610,9 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
       })
       setCreatedOrder(result.orders[0] ?? null)
       const created = result.orders[0] ?? null
+      // The account exists now, whether this order made it or not, so the
+      // stored code can never link anything again.
+      if (pendingInvite) clearPendingInviteCode()
       track(
         "order.created",
         {

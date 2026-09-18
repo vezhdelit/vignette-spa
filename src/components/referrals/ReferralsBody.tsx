@@ -3,19 +3,16 @@ import { Copy, Gift, Share2, TriangleAlert, UserPlus } from "lucide-react"
 import { toast } from "sonner"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
-import { ApiRequestError, apiErrorMessage } from "@/lib/api"
+import { apiErrorMessage } from "@/lib/api"
 import { formatCents, formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { useT } from "@/i18n"
 import {
-  useClaimReferral,
   useInvitedFriends,
   useReferralEarnings,
   useReferrals,
 } from "@/queries/referrals"
-import { clearPendingInviteCode } from "@/stores/invite"
 
 /**
  * The Account tab's "Invite friends" section.
@@ -134,9 +131,7 @@ export function ReferralsBody() {
             name: data.inviter.display_name ?? "—",
           })}
         </p>
-      ) : (
-        <ClaimInvite />
-      )}
+      ) : null}
 
       <div className="mt-4 flex gap-2">
         {(["invited", "earnings"] as const).map((key) => (
@@ -271,71 +266,3 @@ function List({
   )
 }
 
-/**
- * "Someone invited me" — the self-serve claim.
- *
- * This is the path that stops an invite being lost: the web only ever
- * linked at sign-up or at checkout, so a code that arrived any other way
- * (a different device, cleared storage, an account that already existed)
- * used to go nowhere. Shown only while the account has no inviter, because
- * an inviter can never be changed once set.
- */
-function ClaimInvite() {
-  const { t } = useT()
-  const [code, setCode] = useState("")
-  const claim = useClaimReferral()
-
-  const submit = async () => {
-    try {
-      const result = await claim.mutateAsync(code)
-      clearPendingInviteCode()
-      setCode("")
-      toast.success(
-        t("account.referrals.claimed", {
-          name: result.inviter.display_name ?? "—",
-        })
-      )
-    } catch (e) {
-      // Every refusal here is final — a wrong code, your own code, a loop,
-      // or an account that already has an inviter — so say which.
-      toast.error(
-        e instanceof ApiRequestError && e.type === "already_invited"
-          ? t("account.referrals.alreadyInvited")
-          : apiErrorMessage(e)
-      )
-    }
-  }
-
-  return (
-    <div className="mt-3 rounded-2xl bg-[#f1f4f8] p-3">
-      <p className="text-xs font-bold tracking-wider text-navy-soft uppercase">
-        {t("account.referrals.haveCode")}
-      </p>
-      <div className="mt-2 flex items-stretch gap-2">
-        <Input
-          value={code}
-          onChange={(event) => setCode(event.target.value.trim())}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault()
-              void submit()
-            }
-          }}
-          placeholder={t("account.referrals.codePlaceholder")}
-          aria-label={t("account.referrals.haveCode")}
-          autoComplete="off"
-          spellCheck={false}
-          className="h-auto min-w-0 flex-1 rounded-xl border-0 bg-white px-3.5 py-2.5 text-[15px] font-bold text-navy shadow-none"
-        />
-        <Button
-          variant="brand"
-          onClick={submit}
-          disabled={claim.isPending || !code}
-          className="h-auto shrink-0 rounded-xl px-5 text-sm font-extrabold"
-        >
-          {claim.isPending ? <Spinner className="size-4" /> : t("account.referrals.apply")}
-        </Button>
-      </div>
-    </div>
-  )
-}

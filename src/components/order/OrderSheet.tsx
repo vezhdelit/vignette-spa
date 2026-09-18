@@ -486,8 +486,8 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   const onFlexEnabled = (next: boolean) => {
     setFlexEnabled(next)
     track(
-      "checkout.flex_toggled",
-      { enabled: next, tier: flexType },
+      "checkout.addon_toggled",
+      { addon: "flex", enabled: next, tier: flexType, via: "checkbox" },
       { product: product.name },
     )
   }
@@ -495,8 +495,8 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   const onFlexType = (next: "default" | "expanded") => {
     setFlexType(next)
     track(
-      "checkout.flex_toggled",
-      { enabled: flexEnabled, tier: next },
+      "checkout.addon_toggled",
+      { addon: "flex", enabled: flexEnabled, tier: next, via: "tier" },
       { product: product.name },
     )
   }

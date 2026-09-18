@@ -60,7 +60,7 @@ export const STANDARD_EVENTS = [
   "checkout.started",
   "checkout.vehicle_added",
   "checkout.plate_rejected",
-  "checkout.flex_toggled",
+  "checkout.addon_toggled",
   "checkout.promo_applied",
   "checkout.payment_opened",
   "checkout.payment_failed",

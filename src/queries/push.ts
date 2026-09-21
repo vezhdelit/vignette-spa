@@ -21,6 +21,15 @@ export const pushKeys = {
   subscription: ["push", "subscription"] as const,
 }
 
+/** The browser's IANA zone, or undefined where Intl cannot say (the API then assumes Berlin). */
+function browserTimezone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined
+  } catch {
+    return undefined
+  }
+}
+
 /** The browser's current PushSubscription for this origin, if any. */
 export function usePushSubscription() {
   return useQuery({
@@ -77,6 +86,11 @@ export function useEnablePush() {
           installation_id: getInstallationId(),
           platform: "web",
           token: subscription.toJSON(),
+          // The browser's zone, for the opt-in channels' quiet hours
+          // (22:00–08:00 local). This SPA has no opt-in UI yet, so no
+          // `channels` are sent: nothing opt-in reaches a browser until it
+          // does.
+          timezone: browserTimezone(),
         },
       })
 

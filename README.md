@@ -86,8 +86,13 @@ the source and the fallback; the rest are `src/i18n/locales/<lang>.json`.
   the catalog into the Cache API for `public/sw.js`, which shows the OS banner
   and can reach nothing else. Arguments are formatted by name: `country` via
   `Intl.DisplayNames`, `expires_at` as a date in Europe/Berlin, `amount`/`bonus`
-  cents with two decimals. The worker's `formatArg` is the twin of the page's —
-  change both.
+  cents with two decimals, `period` from the catalog's own
+  `notifications.period.*` wording. The worker's `formatArg` is the twin of
+  the page's — change both. Registration also sends the browser's timezone
+  (quiet hours for the opt-in channels), but no `channels`: this SPA has no
+  opt-in UI, so no marketing pushes reach a browser until it does. The
+  worker passes the server's `tag` to `showNotification`, so a later moment
+  about the same order replaces the earlier banner.
 
 Not translated on purpose: plates, currency codes, product names
 (`Vignette 2A`), the session's device name (the API stores it once, and it is

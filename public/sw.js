@@ -35,19 +35,27 @@ const formattingLocale = (language) => (language === "en" ? "en-GB" : language)
 
 // The argument vocabulary — the twin of src/lib/push-catalog.ts#formatArg;
 // keep the two in step or the banner and the inbox disagree.
-function formatArg(name, value, language) {
-  const locale = formattingLocale(language)
+function formatArg(name, value, catalog) {
+  const locale = formattingLocale(catalog.language)
   try {
     switch (name) {
-      case "country": {
+      case "country":
+      case "country_a":
+      case "country_b": {
         const code = String(value).toUpperCase()
         const label = new Intl.DisplayNames([locale], { type: "region" }).of(code)
         return label && label !== code ? label : code
       }
       case "expires_at":
+      case "start_date":
+      case "end_date":
+      case "date":
+        // Numeric on purpose: a spelled month ends with an abbreviation
+        // point in several languages ("30 вер. 2026 р.") and the templates
+        // end with their own full stop.
         return new Intl.DateTimeFormat(locale, {
-          day: "numeric",
-          month: "short",
+          day: "2-digit",
+          month: "2-digit",
           year: "numeric",
           timeZone: TIME_ZONE,
         }).format(new Date(Number(value) * 1000))
@@ -57,6 +65,15 @@ function formatArg(name, value, language) {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         }).format(Number(value) / 100)
+      case "period": {
+        // The order's period as stored: a day count or an annual code. The
+        // wording ("10-day", "annual") is itself in the catalog.
+        const annual = String(value).includes("j") || Number(value) >= 365
+        const strings = catalog.strings || {}
+        if (annual) return strings["notifications.period.annual"] || "annual"
+        const template = strings["notifications.period.days"] || "{count}-day"
+        return template.replace("{count}", String(Number(value)))
+      }
       default:
         return String(value)
     }
@@ -71,7 +88,7 @@ function renderField(key, args, fallback, catalog) {
   if (typeof template !== "string") return fallback
   return template.replace(/\{(\w+)\}/g, (whole, name) =>
     Object.prototype.hasOwnProperty.call(args, name)
-      ? formatArg(name, args[name], catalog.language)
+      ? formatArg(name, args[name], catalog)
       : whole
   )
 }
@@ -110,9 +127,11 @@ self.addEventListener("push", (event) => {
           body: body || "",
           data: payload.data || {},
           lang,
-          // One notification per order: a newer status replaces the stale one
-          // instead of stacking.
-          tag: (payload.data && payload.data.order_id) || undefined,
+          // The server's collapse key (one per order lifecycle, one per
+          // vignette's expiry): a newer moment replaces the stale banner
+          // instead of stacking. Older payloads without it fall back to the
+          // order id.
+          tag: payload.tag || (payload.data && payload.data.order_id) || undefined,
         })
       )
   )

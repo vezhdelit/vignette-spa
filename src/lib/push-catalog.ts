@@ -164,10 +164,13 @@ export function startPushCatalog(): void {
 const PLACEHOLDER = /\{(\w+)\}/g
 const TIME_ZONE = "Europe/Berlin"
 
+// Numeric on purpose: a spelled month ends with an abbreviation point in
+// several languages ("30 вер. 2026 р.") and the templates end with their own
+// full stop.
 function expiryDate(unixSeconds: number): string {
   const options: Intl.DateTimeFormatOptions = {
-    day: "numeric",
-    month: "short",
+    day: "2-digit",
+    month: "2-digit",
     year: "numeric",
     timeZone: TIME_ZONE,
   }
@@ -187,17 +190,34 @@ function euroCents(cents: number): string {
   }
 }
 
+// The order's period as stored (a day count, or an annual code such as
+// "1j"), worded from the catalog itself so "10-day" / "annual" is translated
+// with everything else.
+function periodLabel(value: unknown, catalog: PushCatalog): string {
+  const annual = String(value).includes("j") || Number(value) >= 365
+  if (annual) return catalog.strings["notifications.period.annual"] ?? "annual"
+  const template = catalog.strings["notifications.period.days"] ?? "{count}-day"
+  return template.replace("{count}", String(Number(value)))
+}
+
 // The argument vocabulary. Unknown names print as-is, so a new argument the
 // server starts sending is never lost — it just isn't formatted yet.
-function formatArg(name: string, value: unknown): string {
+function formatArg(name: string, value: unknown, catalog: PushCatalog): string {
   switch (name) {
     case "country":
+    case "country_a":
+    case "country_b":
       return countryLabel(String(value))
     case "expires_at":
+    case "start_date":
+    case "end_date":
+    case "date":
       return expiryDate(Number(value))
     case "amount":
     case "bonus":
       return euroCents(Number(value))
+    case "period":
+      return periodLabel(value, catalog)
     default:
       return String(value)
   }
@@ -228,7 +248,7 @@ export function renderPushField(
   const template = catalog.strings[key]
   if (typeof template !== "string") return fallback
   return template.replace(PLACEHOLDER, (whole, name: string) =>
-    name in args ? formatArg(name, args[name]) : whole
+    name in args ? formatArg(name, args[name], catalog) : whole
   )
 }
 

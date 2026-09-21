@@ -89,8 +89,10 @@ the source and the fallback; the rest are `src/i18n/locales/<lang>.json`.
   cents with two decimals, `period` from the catalog's own
   `notifications.period.*` wording. The worker's `formatArg` is the twin of
   the page's — change both. Registration also sends the browser's timezone
-  (quiet hours for the opt-in channels), but no `channels`: this SPA has no
-  opt-in UI, so no marketing pushes reach a browser until it does. The
+  (quiet hours for the news and trip channels), but no `channels`: those two
+  channels are on by default server-side, so a subscribed browser receives
+  news broadcasts too, at 08:00 local at the earliest; a settings switch to
+  send `channels: { news: false }` is the day someone asks for it. The
   worker passes the server's `tag` to `showNotification`, so a later moment
   about the same order replaces the earlier banner.
 

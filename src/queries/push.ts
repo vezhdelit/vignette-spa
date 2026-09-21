@@ -86,10 +86,10 @@ export function useEnablePush() {
           installation_id: getInstallationId(),
           platform: "web",
           token: subscription.toJSON(),
-          // The browser's zone, for the opt-in channels' quiet hours
-          // (22:00–08:00 local). This SPA has no opt-in UI yet, so no
-          // `channels` are sent: nothing opt-in reaches a browser until it
-          // does.
+          // The browser's zone, for the news/trip channels' quiet hours
+          // (22:00–08:00 local). Those channels are on by default, so no
+          // `channels` field is needed; a settings switch would send
+          // `channels: { news: false }` to turn one off.
           timezone: browserTimezone(),
         },
       })

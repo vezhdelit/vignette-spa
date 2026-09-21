@@ -118,8 +118,8 @@ export interface Wallet {
     provider: "stripe"
     min_amount: number
     max_amount: number
-    /** the tiles to offer, each with the bonus that amount earns */
-    presets: { amount: number; bonus: number }[]
+    /** bare cent amounts — resolve each against bonus_tiers yourself */
+    presets: number[]
     bonus_tiers: { from: number; bonus: number }[]
   }
   checkout: {

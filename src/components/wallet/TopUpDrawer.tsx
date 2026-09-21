@@ -47,7 +47,7 @@ export function TopUpDrawer({
 }) {
   const { t } = useT()
   const [step, setStep] = useState<Step>("amount")
-  const [amount, setAmount] = useState<number>(wallet.top_up.presets[1]?.amount ?? 1900)
+  const [amount, setAmount] = useState<number>(wallet.top_up.presets[1] ?? 1900)
   const [custom, setCustom] = useState("")
   const [topUpId, setTopUpId] = useState<number | null>(null)
   const [paymentLink, setPaymentLink] = useState<string | null>(null)
@@ -68,13 +68,17 @@ export function TopUpDrawer({
   const { min_amount: min, max_amount: max } = wallet.top_up
   const valid = Number.isInteger(amount) && amount >= min && amount <= max
 
-  // The bonus this amount earns, from the server's own tiers — never
-  // recomputed here, so the sheet and the ledger always agree.
-  const bonus =
+  // The bonus rule, stated once: highest `from` <= amount wins. `presets`
+  // are bare cent amounts on the wire — the server deliberately does not
+  // carry a resolved bonus on each tile, so every amount (typed or tapped)
+  // is resolved against `bonus_tiers` the same way here.
+  const bonusFor = (value: number) =>
     [...wallet.top_up.bonus_tiers]
-      .filter((tier) => amount >= tier.from)
+      .filter((tier) => value >= tier.from)
       .map((tier) => tier.bonus)
       .pop() ?? 0
+
+  const bonus = bonusFor(amount)
 
   const start = async () => {
     try {
@@ -133,31 +137,34 @@ export function TopUpDrawer({
             </p>
 
             <div className="mt-4 grid grid-cols-2 gap-2.5">
-              {wallet.top_up.presets.map((preset) => (
-                <button
-                  key={preset.amount}
-                  type="button"
-                  onClick={() => {
-                    setAmount(preset.amount)
-                    setCustom("")
-                  }}
-                  className={cn(
-                    "rounded-2xl border-2 px-3.5 py-3 text-left transition",
-                    amount === preset.amount && !custom
-                      ? "border-white bg-white/20"
-                      : "border-transparent bg-white/10"
-                  )}
-                >
-                  <span className="block text-[19px] font-extrabold text-white">
-                    {formatCents(preset.amount)}
-                  </span>
-                  {preset.bonus > 0 && (
-                    <span className="block text-[12px] font-bold text-mint">
-                      {t("wallet.topUp.plusBonus", { bonus: formatCents(preset.bonus) })}
+              {wallet.top_up.presets.map((preset) => {
+                const presetBonus = bonusFor(preset)
+                return (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => {
+                      setAmount(preset)
+                      setCustom("")
+                    }}
+                    className={cn(
+                      "rounded-2xl border-2 px-3.5 py-3 text-left transition",
+                      amount === preset && !custom
+                        ? "border-white bg-white/20"
+                        : "border-transparent bg-white/10"
+                    )}
+                  >
+                    <span className="block text-[19px] font-extrabold text-white">
+                      {formatCents(preset)}
                     </span>
-                  )}
-                </button>
-              ))}
+                    {presetBonus > 0 && (
+                      <span className="block text-[12px] font-bold text-mint">
+                        {t("wallet.topUp.plusBonus", { bonus: formatCents(presetBonus) })}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
             </div>
 
             <Input

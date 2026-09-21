@@ -1,24 +1,120 @@
-// Web push service worker — ported from vignette-auth-tester-spa/public/sw.js,
-// the presenting half of vignette.id's docs/push/web-integration.md. The push
-// payload is the server's internal notification shape as plain JSON
-// ({ title, body, data }, no aps wrapper): this worker shows it, and a tap
-// deep-links into the app's orders (Home).
+// Web push service worker — the presenting half of vignette.id's
+// docs/push/web-integration.md. The push payload is the server's internal
+// notification shape as plain JSON ({ title, body, data }, no aps wrapper):
+// this worker shows it in the visitor's language, and a tap deep-links into
+// the app's orders (Home).
+//
+// Translation happens here, not on the server (docs/push/ios-integration.md
+// §3 "Rendering the device's language"): `title`/`body` are the English
+// fallback, and `data.loc` names the `notifications.<type>.*` locale keys
+// (single-brace `{name}` placeholders) plus the raw arguments. The catalog for the active UI language is written by the page
+// (src/lib/push-catalog.ts) into the Cache API under CATALOG_URL — a worker
+// has no localStorage, no module state and no env, and must never fetch on a
+// push event it may only have seconds for. Per field: catalog template if
+// present, else the English. A missing catalog is the designed degradation,
+// never a raw key.
+const CATALOG_CACHE = "vignette-push-catalog"
+const CATALOG_URL = "/__push-catalog"
+// The vignette countries' zone: validity ends at 23:59 there, and a device
+// elsewhere would otherwise roll the date.
+const TIME_ZONE = "Europe/Berlin"
+
+async function loadCatalog() {
+  try {
+    const cache = await caches.open(CATALOG_CACHE)
+    const hit = await cache.match(CATALOG_URL)
+    return hit ? await hit.json() : null
+  } catch {
+    return null
+  }
+}
+
+// Same rule as src/i18n#formattingLocale: plain "en" is US conventions,
+// this product's English has always shown day first.
+const formattingLocale = (language) => (language === "en" ? "en-GB" : language)
+
+// The argument vocabulary — the twin of src/lib/push-catalog.ts#formatArg;
+// keep the two in step or the banner and the inbox disagree.
+function formatArg(name, value, language) {
+  const locale = formattingLocale(language)
+  try {
+    switch (name) {
+      case "country": {
+        const code = String(value).toUpperCase()
+        const label = new Intl.DisplayNames([locale], { type: "region" }).of(code)
+        return label && label !== code ? label : code
+      }
+      case "expires_at":
+        return new Intl.DateTimeFormat(locale, {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+          timeZone: TIME_ZONE,
+        }).format(new Date(Number(value) * 1000))
+      case "amount":
+      case "bonus":
+        return new Intl.NumberFormat(locale, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(Number(value) / 100)
+      default:
+        return String(value)
+    }
+  } catch {
+    return String(value)
+  }
+}
+
+function renderField(key, args, fallback, catalog) {
+  if (!key || !catalog || !catalog.strings) return fallback
+  const template = catalog.strings[key]
+  if (typeof template !== "string") return fallback
+  return template.replace(/\{(\w+)\}/g, (whole, name) =>
+    Object.prototype.hasOwnProperty.call(args, name)
+      ? formatArg(name, args[name], catalog.language)
+      : whole
+  )
+}
+
+// { title, body, lang } for showNotification — localized when the payload
+// carries `loc` and the page left a catalog behind, the English otherwise.
+async function localize(payload) {
+  const english = { title: payload.title, body: payload.body, lang: undefined }
+  const loc = payload.data && payload.data.loc
+  if (!loc || typeof loc !== "object") return english
+
+  const catalog = await loadCatalog()
+  if (!catalog) return english
+
+  const args = loc.args && typeof loc.args === "object" ? loc.args : {}
+  return {
+    title: renderField(loc.title, args, payload.title, catalog),
+    body: renderField(loc.body, args, payload.body, catalog),
+    lang: catalog.language,
+  }
+}
+
 self.addEventListener("push", (event) => {
   let payload = {}
   try {
     payload = event.data ? event.data.json() : {}
-  } catch (e) {
+  } catch {
     /* not JSON — show the fallback below */
   }
 
   event.waitUntil(
-    self.registration.showNotification(payload.title || "Vignette ID", {
-      body: payload.body || "",
-      data: payload.data || {},
-      // One notification per order: a newer status replaces the stale one
-      // instead of stacking.
-      tag: (payload.data && payload.data.order_id) || undefined,
-    })
+    localize(payload)
+      .catch(() => ({ title: payload.title, body: payload.body }))
+      .then(({ title, body, lang }) =>
+        self.registration.showNotification(title || "Vignette ID", {
+          body: body || "",
+          data: payload.data || {},
+          lang,
+          // One notification per order: a newer status replaces the stale one
+          // instead of stacking.
+          tag: (payload.data && payload.data.order_id) || undefined,
+        })
+      )
   )
 })
 

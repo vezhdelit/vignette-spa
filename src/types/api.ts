@@ -281,12 +281,35 @@ export interface Vehicle {
   created_at: number | null
 }
 
+/**
+ * The locale keys a push (and its inbox row) carries so the device renders
+ * its own language — vignette.id docs/push/ios-integration.md §3. A `null`
+ * field is literal only (an admin's free-text body keeps the English/what
+ * they typed). Rendered by `src/lib/push-catalog.ts`.
+ */
+export interface PushLoc {
+  title: string | null
+  body: string | null
+  /** raw values formatted by name: country (ISO code), plate, expires_at (unix), amount/bonus (cents), count */
+  args: Record<string, string | number>
+}
+
+/** `data` of a push payload and of an inbox row — the same object. */
+export interface NotificationData {
+  type?: string
+  order_id?: string
+  loc?: PushLoc
+  catalog_version?: string
+  [key: string]: unknown
+}
+
 export interface AppNotification {
   id: number | string
+  /** English fallback — render through `renderNotification()` for the UI language */
   title: string
   body: string
-  /** same shape as the push payload, e.g. { type: "order_paid", order_id } */
-  data: Record<string, unknown> | null
+  /** same shape as the push payload, e.g. { type: "order_paid", order_id, loc } */
+  data: NotificationData | null
   read: boolean
   read_at: number | null
   created_at: number

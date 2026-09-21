@@ -6,6 +6,7 @@ import { Empty, EmptyDescription, EmptyHeader } from "@/components/ui/empty"
 import { Spinner } from "@/components/ui/spinner"
 import { apiErrorMessage } from "@/lib/api"
 import { formatDotDateTime } from "@/lib/format"
+import { renderNotification, usePushCatalog } from "@/lib/push-catalog"
 import { useT } from "@/i18n"
 import { useSessionScope } from "@/queries/session"
 import {
@@ -30,6 +31,9 @@ import type { AppNotification } from "@/types/api"
 export function NotificationsList({ className }: { className?: string }) {
   const { t } = useT()
   const { guest } = useSessionScope()
+  // Rows arrive with English text plus `data.loc`; the catalog renders them
+  // in the UI language, and re-renders when it (or the language) changes.
+  const catalog = usePushCatalog()
   const query = useNotifications({ markRead: true })
   const {
     items,
@@ -113,7 +117,9 @@ export function NotificationsList({ className }: { className?: string }) {
         )}
       </div>
 
-      {items.map((n) => (
+      {items.map((n) => {
+        const { title, body } = renderNotification(n, catalog)
+        return (
         <button
           type="button"
           key={String(n.id)}
@@ -143,9 +149,9 @@ export function NotificationsList({ className }: { className?: string }) {
             />
             <div className="min-w-0 flex-1">
               <p className={cn("text-sm text-navy", n.read ? "font-bold" : "font-extrabold")}>
-                {n.title}
+                {title}
               </p>
-              <p className="mt-0.5 text-sm font-medium text-navy/80">{n.body}</p>
+              <p className="mt-0.5 text-sm font-medium text-navy/80">{body}</p>
               <p className="mt-1 text-[11px] font-semibold text-navy-soft">
                 {formatDotDateTime(n.created_at)}
                 {n.read && n.read_at
@@ -155,7 +161,8 @@ export function NotificationsList({ className }: { className?: string }) {
             </div>
           </div>
         </button>
-      ))}
+        )
+      })}
 
       {hasNextPage && (
         <Button

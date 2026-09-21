@@ -76,6 +76,18 @@ the source and the fallback; the rest are `src/i18n/locales/<lang>.json`.
   device" clears the override. `document.documentElement.lang` follows.
 - The language resolves **before the first paint** (`initI18n()` is awaited in
   `main.tsx`), so the app never renders English and then flips.
+- **Push notifications are translated on the device too**, from the API's own
+  catalog rather than this dictionary. A push, and every inbox row, carries
+  the English sentence plus `data.loc` — `notifications.<type>.*` locale keys and raw
+  arguments (vignette.id `docs/push/ios-integration.md` §3). `src/lib/push-catalog.ts`
+  fetches `GET /public/locales/<lang>?prefix=notifications` for the active language
+  (again on every switch), persists it, renders the inbox rows per field
+  (a key the catalog lacks keeps the English, never a raw key), and writes
+  the catalog into the Cache API for `public/sw.js`, which shows the OS banner
+  and can reach nothing else. Arguments are formatted by name: `country` via
+  `Intl.DisplayNames`, `expires_at` as a date in Europe/Berlin, `amount`/`bonus`
+  cents with two decimals. The worker's `formatArg` is the twin of the page's —
+  change both.
 
 Not translated on purpose: plates, currency codes, product names
 (`Vignette 2A`), the session's device name (the API stores it once, and it is
@@ -143,6 +155,10 @@ Every request except the auth handshake goes through TanStack Query —
   badge, read/unread/mark-all mutations that patch the cached pages),
   consents and web-push registration. Endpoints a guest may not call
   (`403 guest_not_allowed`) are `enabled: false` for a guest session.
+- `lib/push-catalog.ts` — the one piece of server copy outside Query: the
+  `notifications.<type>.*` translations a push and an inbox row are rendered from, in a small
+  persisted store (per UI language) mirrored into the Cache API for the
+  service worker.
 
 Session-bound keys are `[root, <user id | "anon">, …]`, so signing in or out
 starts from an empty cache; `App.tsx` drops the previous session's entries.
@@ -164,7 +180,8 @@ client reads it synchronously to sign requests.
 | Buy | `POST /public/me/orders` (+ `?allow_duplication` retry) → `payment_link` | order sheet (2-step) |
 | Modify / refund / transfer | `POST orders/:id/{modify,refund,transfer}` | expanded order card |
 | Wallet / referrals / vehicles | `GET wallet`, `referrals`, `vehicles` | Account sections (wallet/income are **integer cents**); `vehicles` is guest-ok — a guest gets the plates from its own orders, with string ids `"<country>:<plate>"` — and feeds the order sheet's saved-plate chips |
-| Notifications | `GET notifications?mark_read=true` (paginated; opening the inbox is what marks it read), `GET notifications/summary` (unread badge, polled every 60s), `POST notifications/:id/read`, `:id/unread`, `mark-all-read` | header bell → `/notifications` page; Account → Notifications section (same list) |
+| Notifications | `GET notifications?mark_read=true` (paginated; opening the inbox is what marks it read), `GET notifications/summary` (unread badge, polled every 60s), `POST notifications/:id/read`, `:id/unread`, `mark-all-read` | header bell → `/notifications` page; Account → Notifications section (same list); rows render in the UI language from `data.loc` (see Languages) |
+| Push copy | `GET /public/locales/:lang?prefix=notifications` | `src/lib/push-catalog.ts` — the `notifications.<type>.*` templates the inbox and `public/sw.js` render pushes from; fetched per UI language, cached for the worker |
 | Consents | `GET`/`POST`/`DELETE consents` | Account → Partner access (grant/revoke) |
 | Rate the app | `has_rated` / `rate_prompt` on `GET /public/me`; `POST rating` (`{ rating, comment? }` → `store_review`), `POST rating/dismissed` | one sheet (`components/rating/RateAppSheet`, opened via `stores/rating.ts`): auto after a paid checkout while `rate_prompt` is `after_purchase`; Home "Enjoying vignette.id?" card while it is `anywhere` (its ✕ = dismissed); Account → "Rate the app" row any time (manual open, never reported as a dismissal). 4–5 stars continue to `VITE_APP_STORE_REVIEW_URL` when set. Both writes patch the cached `/me`, no refetch |
 | Apple Wallet | `GET apple-pass` | order card → ADD TO WALLET |

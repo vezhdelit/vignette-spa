@@ -111,18 +111,19 @@ interface EventExtra {
   context?: Record<string, unknown>
   product?: string
   /**
-   * The API's `order_id` is an integer column, but every id this app handles
-   * is a string — Postgres bigints arrive as strings and stay that way.
-   * Accept either and coerce below; a non-numeric one is dropped rather than
-   * sent as NaN.
+   * The order's PUBLIC id — `orders[].id` as every order endpoint returns it
+   * (the API's `unique_id`). Since 2026-09-21 the envelope's `order_id`
+   * takes exactly that string; it used to be an integer column nothing this
+   * app could see ever matched, so the numeric coercion that lived here is
+   * gone.
    */
-  order_id?: number | string
+  order_id?: string
 }
 
-const asOrderId = (value: number | string | undefined): number | undefined => {
-  if (value === undefined) return undefined
-  const id = typeof value === "number" ? value : Number(value)
-  return Number.isSafeInteger(id) && id > 0 ? id : undefined
+const asOrderId = (value: string | undefined): string | undefined => {
+  if (typeof value !== "string") return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 && trimmed.length <= 200 ? trimmed : undefined
 }
 
 interface IngestEvent {
@@ -133,7 +134,7 @@ interface IngestEvent {
   anonymous_id: string | null
   session_id: string | null
   product?: string
-  order_id?: number
+  order_id?: string
   context: Record<string, unknown>
   properties: Record<string, unknown>
 }

@@ -6,7 +6,8 @@ import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer"
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import { PaymentModal } from "@/components/order/PaymentDrawer"
-import { apiErrorMessage } from "@/lib/api"
+import { ApiRequestError, apiErrorMessage } from "@/lib/api"
+import { track } from "@/lib/insights"
 import { formatCents } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { useT } from "@/i18n"
@@ -80,13 +81,33 @@ export function TopUpDrawer({
 
   const bonus = bonusFor(amount)
 
+  /** Amounts are cents on the wire and euros in the stream, like every
+   *  `*_eur` property in the catalogue. */
+  const eur = (cents: number) => Math.round(cents) / 100
+
   const start = async () => {
     try {
       const result = await createTopUp.mutateAsync(amount)
       setTopUpId(result.id)
       setPaymentLink(result.payment_link)
       setStep("paying")
+      // The amount is chosen and the checkout is about to open. `preset`
+      // says whether a suggested tier was tapped or a figure typed, which is
+      // what tells us the tiers are set right.
+      track("wallet.topup_started", {
+        amount_eur: eur(amount),
+        bonus_eur: eur(bonus),
+        preset: !custom && wallet.top_up.presets.includes(amount),
+      })
     } catch (e) {
+      // Refused before a checkout ever existed — an amount out of range, the
+      // feature switched off, a rate limit. The same split
+      // checkout.payment_failed makes for orders: a lost top-up is not an
+      // abandoned one, and only one of the two is worth fixing.
+      track("wallet.topup_failed", {
+        amount_eur: eur(amount),
+        reason: e instanceof ApiRequestError ? e.type : "create_failed",
+      })
       toast.error(apiErrorMessage(e))
     }
   }
@@ -98,6 +119,10 @@ export function TopUpDrawer({
    */
   const close = () => {
     if (step === "paying" && topUpId !== null && !paid) {
+      // Closed with the checkout open and nothing credited. Counted as a
+      // failed top-up with its own reason, so abandonment and a decline stay
+      // tellable apart in the same funnel.
+      track("wallet.topup_failed", { amount_eur: eur(amount), reason: "abandoned" })
       // best-effort: the hourly sweep closes it either way
       void cancelTopUp.mutateAsync(topUpId).catch(() => {})
     }

@@ -624,11 +624,23 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
         },
         { product: product.name, ...(created?.id ? { order_id: created.id } : {}) },
       )
-      track(
-        "checkout.payment_opened",
-        { amount_eur: eurTotal ?? total },
-        { product: product.name, ...(created?.id ? { order_id: created.id } : {}) },
-      )
+      // Balance spent on this order. Sent whichever way the branch below
+      // goes — `covered_full` is what tells the two apart, and the wire
+      // amounts are cents while the catalogue is euros.
+      const walletPaid = result.payment?.wallet
+      if (walletPaid?.applied) {
+        track(
+          "checkout.wallet_applied",
+          {
+            amount_eur: Math.round(walletPaid.applied) / 100,
+            from_balance_eur: Math.round(walletPaid.from_balance ?? 0) / 100,
+            from_bonuses_eur: Math.round(walletPaid.from_bonuses ?? 0) / 100,
+            covered_full: result.payment?.status === "paid",
+          },
+          { product: product.name, ...(created?.id ? { order_id: created.id } : {}) },
+        )
+      }
+
       // The wallet may have covered the whole order, in which case there is
       // nothing to pay: no payment link comes back and the order is already
       // PENDING. Branch on payment.status, never on the link being there.
@@ -639,10 +651,21 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
         return
       }
 
-      if (result.payment?.wallet?.applied) {
+      if (walletPaid?.applied) {
         // part-paid from the wallet: the balance moved, so refresh it
         void invalidateWallet()
       }
+
+      // The payment step — and only now. A wallet-covered order never opens
+      // one, so firing this before the branch above counted a sale that
+      // skipped the payment page as one that went through it: exactly the
+      // under-count docs/insights/partner-api.md warns `covered_full` is
+      // there to prevent.
+      track(
+        "checkout.payment_opened",
+        { amount_eur: eurTotal ?? total },
+        { product: product.name, ...(created?.id ? { order_id: created.id } : {}) },
+      )
 
       // shown in an in-sheet iframe (the pay page ships
       // `frame-ancestors *` exactly for this embedded-webview use)

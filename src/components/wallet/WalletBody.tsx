@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Plus, TriangleAlert } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -6,6 +6,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { TopUpDrawer } from "@/components/wallet/TopUpDrawer"
 import { WalletTransactions } from "@/components/wallet/WalletTransactions"
 import { apiErrorMessage } from "@/lib/api"
+import { trackOncePerSession } from "@/lib/insights"
 import { formatCents } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { useT } from "@/i18n"
@@ -31,6 +32,18 @@ export function WalletBody() {
   const invalidateWallet = useInvalidateWallet()
   const [toppingUp, setToppingUp] = useState(false)
   const data = query.data
+
+  // Once per session, not per render: this section re-renders on every
+  // balance refresh, and the question is whether they ever looked at the
+  // wallet at all. `has_balance` separates someone checking money they have
+  // from someone discovering the feature.
+  useEffect(() => {
+    if (!data) return
+    trackOncePerSession("wallet_viewed", "wallet.viewed", {
+      has_balance: data.total > 0,
+      placement: "account",
+    })
+  }, [data])
 
   if (query.isPending) {
     return (

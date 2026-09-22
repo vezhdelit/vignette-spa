@@ -48,7 +48,12 @@ const ONCE_PREFIX = "vignette_tracked_"
  *
  * `order.paid`, `order.activated` and `order.refunded` are deliberately
  * absent: the server emits those itself, once per order, from the payment
- * and fulfilment it actually observes. A client must never send them.
+ * and fulfilment it actually observes. A client must never send them. So is
+ * `wallet.topup_completed`, for the sharper version of the same reason: a
+ * confirmed payment sheet is not proof the money landed, and the server's own
+ * reconciliation is the only thing that knows. This app sends
+ * `wallet.topup_started` and `wallet.topup_failed` — the halves it can
+ * actually see — and lets the server close the loop.
  */
 export const STANDARD_EVENTS = [
   "app.opened",
@@ -64,7 +69,11 @@ export const STANDARD_EVENTS = [
   "checkout.promo_applied",
   "checkout.payment_opened",
   "checkout.payment_failed",
+  "checkout.wallet_applied",
   "order.created",
+  "wallet.viewed",
+  "wallet.topup_started",
+  "wallet.topup_failed",
   "user.identified",
   "user.signin_started",
   "user.signin_completed",

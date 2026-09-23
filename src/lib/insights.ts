@@ -299,6 +299,12 @@ const sessionReferrer = (): string | undefined => {
  * class, browser family and OS. None of it identifies a person, and it is
  * what fills the panel's Device column. Computed once — the UA does not
  * change.
+ *
+ * `device` says `phone`, not the "mobile" the browser world would use: the
+ * iOS app reports a handset as `phone`, and one person on their phone must
+ * not read as two kinds of device depending on which of our apps they
+ * happened to open. The shared vocabulary is pinned in vignette.id
+ * docs/insights/event-conventions.md §3.
  */
 let deviceCache: Record<string, string> | null = null
 const deviceContext = (): Record<string, string> => {
@@ -309,7 +315,7 @@ const deviceContext = (): Record<string, string> => {
     /iPad|Tablet|PlayBook|Silk/i.test(ua) || (/Android/i.test(ua) && !/Mobile/i.test(ua))
       ? "tablet"
       : /Mobi|iPhone|iPod|Android/i.test(ua)
-        ? "mobile"
+        ? "phone"
         : "desktop"
   // Order matters: Edge and Opera carry "Chrome", Chrome carries "Safari".
   const browser = /Edg\//.test(ua)

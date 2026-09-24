@@ -95,8 +95,8 @@ export const en = {
   "modify.plate": "Registration plate",
   "modify.plateCountry": "Plate country",
   "modify.vin": "VIN code",
-  "modify.vinPlaceholder": "9 or 17-character VIN",
-  "modify.vinRequired": "This product requires a VIN code (9 or 17 characters).",
+  "modify.vinPlaceholder": "9–17 character VIN",
+  "modify.vinRequired": "This product requires a VIN code (9–17 characters).",
   "modify.confirm":
     "I confirm that the changes were made correctly and I am responsible for their accuracy.",
   "modify.save": "Save changes",

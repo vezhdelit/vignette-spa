@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { TriangleAlert } from "lucide-react"
 import {
@@ -53,6 +53,8 @@ export function HomePage() {
   const pushFocus = usePushFocusStore((s) => s.focus)
   const clearPushFocus = usePushFocusStore((s) => s.clear)
   const [focusedOrderId, setFocusedOrderId] = useState<string | null>(null)
+  /** the order we have already spent a refetch looking for */
+  const refetchedForFocus = useRef<string | null>(null)
 
   useEffect(() => {
     const orderId = pushFocus?.orderId
@@ -63,11 +65,22 @@ export function HomePage() {
     const target = visible.find((order) => order.id === orderId)
     if (!target) {
       // Orders arrive a page at a time, so the one the push named may be
-      // further down. Keep loading until it turns up — or the pages run out,
-      // which is an order that was deleted, refunded away or belongs to
-      // another session: land on Home as any other visit would.
-      if (hasNextPage && !isFetchingNextPage) void fetchNextPage()
-      else clearPushFocus()
+      // further down. Keep loading until it turns up.
+      if (hasNextPage && !isFetchingNextPage) {
+        void fetchNextPage()
+        return
+      }
+      // On no page at all. `order_transferred` is the ordinary reason: the
+      // vignette became this account's moments ago, so every cached page
+      // predates it. One refetch, then give up — an order that was deleted,
+      // refunded away or belongs to another session never arrives, and this
+      // must not become a loop.
+      if (refetchedForFocus.current !== orderId) {
+        refetchedForFocus.current = orderId
+        void refetch()
+        return
+      }
+      clearPushFocus()
 
       return
     }
@@ -90,6 +103,7 @@ export function HomePage() {
     hasNextPage,
     isFetchingNextPage,
     fetchNextPage,
+    refetch,
     clearPushFocus,
   ])
 

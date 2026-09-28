@@ -130,6 +130,20 @@ async function localize(payload) {
   }
 }
 
+// Take over as soon as a new version of this file is fetched. Without these
+// two, a browser keeps the previous worker — and its previous rendering
+// rules — until every tab of this origin is closed, so a catalog change
+// that needs a renderer change (a new placeholder, say) shows up as a raw
+// "{name}" in banners for days. This worker holds no state worth keeping
+// across versions: the catalog lives in the Cache API and is re-read on
+// every push.
+self.addEventListener("install", () => {
+  self.skipWaiting()
+})
+self.addEventListener("activate", (event) => {
+  event.waitUntil(self.clients.claim())
+})
+
 self.addEventListener("push", (event) => {
   let payload = {}
   try {

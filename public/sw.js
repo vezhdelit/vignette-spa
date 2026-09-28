@@ -170,9 +170,11 @@ self.addEventListener("push", (event) => {
   )
 })
 
-// Every alert today is order-scoped, so a tap always lands on Home (where
-// orders are listed) — focusing an open tab of this origin when there is
-// one, opening a fresh one otherwise.
+// A tap always lands on "/" — a worker has one URL to open and cannot route
+// — focusing an open tab of this origin when there is one and opening a
+// fresh one otherwise. The payload's own markers ride on the query string so
+// the app can finish the job: src/stores/push-focus.ts scrolls to the order
+// the push named and opens its card, or sends an account screen to /account.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close()
 
@@ -187,6 +189,9 @@ self.addEventListener("notificationclick", (event) => {
   const params = new URLSearchParams({ vsrc: "push" })
   if (data.type) params.set("vtype", String(data.type))
   if (data.order_id) params.set("void", String(data.order_id))
+  // Which surface the server meant this push to open (vignette, checkout,
+  // balance, …). The app treats an unknown value as "just open the app".
+  if (data.screen) params.set("vscreen", String(data.screen))
   const target = `/?${params.toString()}`
 
   event.waitUntil(

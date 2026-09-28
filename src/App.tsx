@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react"
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { Toaster } from "@/components/ui/sonner"
 import { AppShell } from "@/components/layout/AppShell"
@@ -13,6 +13,7 @@ import { dropSessionQueries, queryClient } from "@/lib/query"
 import { useLanguage } from "@/i18n"
 import { useAuthStore } from "@/stores/auth"
 import { captureInviteCodeFromUrl } from "@/stores/invite"
+import { isAccountScreen, usePushFocusStore } from "@/stores/push-focus"
 
 export default function App() {
   const bootstrap = useAuthStore((s) => s.bootstrap)
@@ -37,6 +38,7 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <InsightsTracker />
+        <PushFocusRoute />
         {/* spends an invite code the visitor arrived with, once there is an
             account to attach it to */}
         <Routes>
@@ -53,6 +55,26 @@ export default function App() {
       </BrowserRouter>
     </QueryClientProvider>
   )
+}
+
+/**
+ * A push about the wallet or a referral reward opens "/" like every other
+ * tap — the service worker has one URL to give — so send it on to the page
+ * that actually holds those. Orders are Home's business (HomePage reads the
+ * same focus), and the two never both act on one push: the screen decides.
+ */
+function PushFocusRoute() {
+  const navigate = useNavigate()
+  const focus = usePushFocusStore((s) => s.focus)
+  const clear = usePushFocusStore((s) => s.clear)
+
+  useEffect(() => {
+    if (!isAccountScreen(focus?.screen ?? null)) return
+    clear()
+    navigate("/account")
+  }, [focus, navigate, clear])
+
+  return null
 }
 
 /**

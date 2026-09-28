@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { TriangleAlert } from "lucide-react"
 import {
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { apiErrorMessage } from "@/lib/api"
 import { useT } from "@/i18n"
 import { useAuthStore } from "@/stores/auth"
+import { isAccountScreen, usePushFocusStore } from "@/stores/push-focus"
 import { useOrders } from "@/queries/orders"
 import { OrderCard } from "@/components/home/OrderCard"
 import { OrderCardSkeleton } from "@/components/home/OrderCardSkeleton"
@@ -41,8 +42,56 @@ export function HomePage() {
   // "Awaiting payment" card tapped — reopen its checkout in the modal
   const [paying, setPaying] = useState<Order | null>(null)
 
-  const visible = orders.filter((o) => !HIDDEN_STATUSES.has(o.status))
+  const visible = useMemo(
+    () => orders.filter((o) => !HIDDEN_STATUSES.has(o.status)),
+    [orders]
+  )
   const booting = authStatus === "booting" || isPending
+
+  // A tapped push names the order it is about (stores/push-focus.ts). Open
+  // that card rather than dropping the reader at the top of their list.
+  const pushFocus = usePushFocusStore((s) => s.focus)
+  const clearPushFocus = usePushFocusStore((s) => s.clear)
+  const [focusedOrderId, setFocusedOrderId] = useState<string | null>(null)
+
+  useEffect(() => {
+    const orderId = pushFocus?.orderId
+    // Account screens belong to /account and are routed in App; without an
+    // order id there is nothing here to open.
+    if (!orderId || booting || isAccountScreen(pushFocus?.screen ?? null)) return
+
+    const target = visible.find((order) => order.id === orderId)
+    if (!target) {
+      // Orders arrive a page at a time, so the one the push named may be
+      // further down. Keep loading until it turns up — or the pages run out,
+      // which is an order that was deleted, refunded away or belongs to
+      // another session: land on Home as any other visit would.
+      if (hasNextPage && !isFetchingNextPage) void fetchNextPage()
+      else clearPushFocus()
+
+      return
+    }
+
+    setFocusedOrderId(target.id)
+    // "Your order isn't paid yet" — the useful landing is the payment sheet
+    // itself, not the card that holds the button.
+    if (
+      pushFocus?.screen === "checkout" &&
+      target.status === "CREATED" &&
+      target.payment_link
+    ) {
+      setPaying(target)
+    }
+    clearPushFocus()
+  }, [
+    pushFocus,
+    visible,
+    booting,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+    clearPushFocus,
+  ])
 
   return (
     <div className="space-y-4 pt-1">
@@ -71,7 +120,12 @@ export function HomePage() {
           {/* only while the server says rate_prompt: "anywhere" */}
           <RateUsCard />
           {visible.map((order) => (
-            <OrderCard key={order.id} order={order} onPay={setPaying} />
+            <OrderCard
+              key={order.id}
+              order={order}
+              onPay={setPaying}
+              autoExpand={order.id === focusedOrderId}
+            />
           ))}
           {hasNextPage && (
             <Button

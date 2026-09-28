@@ -7,6 +7,7 @@ import {
   trackOncePerSession,
 } from "@/lib/insights"
 import { useAuthStore } from "@/stores/auth"
+import { setPushFocus } from "@/stores/push-focus"
 
 /**
  * The lifecycle events no single component owns, kept in one place so the
@@ -45,7 +46,7 @@ const pageName = (pathname: string): string => {
 }
 
 /** What the service worker adds to the URL when a push is tapped (sw.js). */
-const PUSH_PARAMS = ["vsrc", "vtype", "void"]
+const PUSH_PARAMS = ["vsrc", "vtype", "void", "vscreen"]
 /** Campaign markers — a visit carrying one arrived through a link we placed. */
 const CAMPAIGN_PARAMS = ["utm_source", "utm_medium", "utm_campaign", "ref"]
 
@@ -67,6 +68,7 @@ const readArrival = () => {
       notification: {
         type: params.get("vtype") || undefined,
         orderId: params.get("void") || undefined,
+        screen: params.get("vscreen") || undefined,
       },
     }
   }
@@ -136,6 +138,16 @@ export function InsightsTracker() {
         { ...(arrival.notification?.type ? { type: arrival.notification.type } : {}) },
         arrival.notification?.orderId ? { order_id: arrival.notification.orderId } : {},
       )
+      // The other half of a tap: where the push wanted to land. Read here
+      // because this is the one place that sees the markers before
+      // stripPushParams() takes them out; acted on by HomePage and
+      // App#PushFocusRoute, which own the surfaces.
+      if (arrival.notification?.orderId || arrival.notification?.screen) {
+        setPushFocus({
+          orderId: arrival.notification.orderId ?? null,
+          screen: arrival.notification.screen ?? null,
+        })
+      }
       return
     }
     if (arrival.via === "link") {

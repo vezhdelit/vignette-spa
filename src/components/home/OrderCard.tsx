@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
   Car,
   TriangleAlert,
@@ -131,13 +131,17 @@ const MODIFY_REASON_KEYS: Record<string, MessageKey> = {
 export function OrderCard({
   order,
   onPay,
+  autoExpand = false,
 }: {
   order: Order
   /** open the payment modal for this unpaid order (Home provides the drawer) */
   onPay?: (order: Order) => void
+  /** this is the order a tapped push named — open it and scroll it into view */
+  autoExpand?: boolean
 }) {
   const { t } = useT()
   const [expanded, setExpanded] = useState(false)
+  const cardRef = useRef<HTMLDivElement>(null)
   const [drawer, setDrawer] = useState<"modify" | "transfer" | "refund" | null>(null)
   const guest = useAuthStore((s) => s.user?.guest ?? true)
 
@@ -157,6 +161,26 @@ export function OrderCard({
       ? order.partial_refund
       : null
 
+  // Arrived here from a push about this order. Only on the transition into
+  // `autoExpand`, so closing the card afterwards sticks — and a card that
+  // was never the push's target is untouched.
+  useEffect(() => {
+    if (!autoExpand) return
+    setExpanded(true)
+    // One frame, so the collapsible has laid out before we measure where it
+    // ended up; otherwise a long list scrolls to the card's collapsed height.
+    const frame = window.requestAnimationFrame(() => {
+      cardRef.current?.scrollIntoView({
+        behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+        block: "center",
+      })
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [autoExpand])
+
   const downloadPass = async () => {
     try {
       const blob = await apiBlob("/public/me/apple-pass")
@@ -173,7 +197,7 @@ export function OrderCard({
 
   return (
     <Collapsible open={expanded} onOpenChange={setExpanded} asChild>
-      <Card className={cn("gap-0 rounded-[24px] py-0 ring-0", theme.wrapper)}>
+      <Card ref={cardRef} className={cn("gap-0 rounded-[24px] py-0 ring-0", theme.wrapper)}>
         {theme.banner && (
           <Alert
             className={cn(

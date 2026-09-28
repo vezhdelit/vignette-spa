@@ -23,7 +23,11 @@
  *   raw key. Arguments are raw values formatted BY NAME (the vocabulary is
  *   the contract): `country` an ISO code, `expires_at` unix seconds shown in
  *   Europe/Berlin (validity ends at 23:59 there), `amount`/`bonus` euro cents
- *   with two decimals — the € sign is in the template.
+ *   with two decimals — the € sign is in the template. `{for_country}` /
+ *   `{in_country}` are not arguments: they render `country` as a whole
+ *   phrase from the catalog (`notifications.for_country.<code>`), which is
+ *   how languages that decline country names stay grammatical. A field with
+ *   a hole the catalog cannot fill falls back to the English.
  *
  * The worker's copy of these rules is in public/sw.js#formatArg; keep the two
  * in step, or the banner and the inbox disagree about the same message.
@@ -204,10 +208,13 @@ function periodLabel(value: unknown, catalog: PushCatalog): string {
 // server starts sending is never lost — it just isn't formatted yet.
 function formatArg(name: string, value: unknown, catalog: PushCatalog): string {
   switch (name) {
-    case "country":
-    case "country_a":
-    case "country_b":
-      return countryLabel(String(value))
+    case "country": {
+      // The catalog's own name first (notifications.country.<code>), so the
+      // banner, the inbox and the iOS app all use one wording; the SPA's
+      // label only when the catalog predates the key.
+      const name = catalog.strings[`notifications.country.${String(value).toLowerCase()}`]
+      return typeof name === "string" ? name : countryLabel(String(value))
+    }
     case "expires_at":
     case "start_date":
     case "end_date":
@@ -247,9 +254,33 @@ export function renderPushField(
   if (!key || !catalog) return fallback
   const template = catalog.strings[key]
   if (typeof template !== "string") return fallback
-  return template.replace(PLACEHOLDER, (whole, name: string) =>
-    name in args ? formatArg(name, args[name], catalog) : whole
-  )
+  let complete = true
+  const rendered = template.replace(PLACEHOLDER, (whole, name: string) => {
+    const value = fillPlaceholder(name, args, catalog)
+    if (value === null) complete = false
+    return value ?? whole
+  })
+  // A hole the catalog cannot fill (a country with no phrase yet) would show
+  // as "{in_country}" — the English sentence is the better fallback.
+  return complete ? rendered : fallback
+}
+
+// {for_country} / {in_country} are the `country` argument as a whole phrase,
+// preposition and case included ("для Австрии", "v Rakousku"), read from the
+// catalog's notifications.<role>.<code>. Everything else is an argument.
+const COUNTRY_ROLES = new Set(["for_country", "in_country"])
+
+function fillPlaceholder(
+  name: string,
+  args: PushLoc["args"],
+  catalog: PushCatalog
+): string | null {
+  if (COUNTRY_ROLES.has(name)) {
+    if (!("country" in args)) return null
+    const phrase = catalog.strings[`notifications.${name}.${String(args.country).toLowerCase()}`]
+    return typeof phrase === "string" ? phrase : null
+  }
+  return name in args ? formatArg(name, args[name], catalog) : null
 }
 
 /** A notification's title and body in the active language. */

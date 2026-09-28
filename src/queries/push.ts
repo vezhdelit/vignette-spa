@@ -86,7 +86,7 @@ export function useEnablePush() {
           installation_id: getInstallationId(),
           platform: "web",
           token: subscription.toJSON(),
-          // The browser's zone, for the news/trip channels' quiet hours
+          // The browser's zone, for the news channel's quiet hours
           // (22:00–08:00 local). Those channels are on by default, so no
           // `channels` field is needed; a settings switch would send
           // `channels: { news: false }` to turn one off.

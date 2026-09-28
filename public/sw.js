@@ -39,9 +39,11 @@ function formatArg(name, value, catalog) {
   const locale = formattingLocale(catalog.language)
   try {
     switch (name) {
-      case "country":
-      case "country_a":
-      case "country_b": {
+      case "country": {
+        // The catalog's name first (notifications.country.<code>), the
+        // browser's region name only when the catalog predates the key.
+        const name = (catalog.strings || {})["notifications.country." + String(value).toLowerCase()]
+        if (typeof name === "string") return name
         const code = String(value).toUpperCase()
         const label = new Intl.DisplayNames([locale], { type: "region" }).of(code)
         return label && label !== code ? label : code
@@ -86,11 +88,28 @@ function renderField(key, args, fallback, catalog) {
   if (!key || !catalog || !catalog.strings) return fallback
   const template = catalog.strings[key]
   if (typeof template !== "string") return fallback
-  return template.replace(/\{(\w+)\}/g, (whole, name) =>
-    Object.prototype.hasOwnProperty.call(args, name)
-      ? formatArg(name, args[name], catalog)
-      : whole
-  )
+  let complete = true
+  const rendered = template.replace(/\{(\w+)\}/g, (whole, name) => {
+    const value = fillPlaceholder(name, args, catalog)
+    if (value === null) complete = false
+    return value === null ? whole : value
+  })
+  // A hole the catalog cannot fill would show as "{in_country}" — the English
+  // sentence is the better fallback. Same rule as push-catalog.ts.
+  return complete ? rendered : fallback
+}
+
+// {for_country} / {in_country}: the `country` argument as a whole phrase from
+// the catalog (notifications.<role>.<code>) — the twin of
+// src/lib/push-catalog.ts#fillPlaceholder.
+function fillPlaceholder(name, args, catalog) {
+  const has = (n) => Object.prototype.hasOwnProperty.call(args, n)
+  if (name === "for_country" || name === "in_country") {
+    if (!has("country")) return null
+    const phrase = catalog.strings["notifications." + name + "." + String(args.country).toLowerCase()]
+    return typeof phrase === "string" ? phrase : null
+  }
+  return has(name) ? formatArg(name, args[name], catalog) : null
 }
 
 // { title, body, lang } for showNotification — localized when the payload

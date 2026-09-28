@@ -308,7 +308,7 @@ export interface AppNotification {
   /** English fallback — render through `renderNotification()` for the UI language */
   title: string
   body: string
-  /** same shape as the push payload, e.g. { type: "order_paid", order_id, loc } */
+  /** same shape as the push payload, e.g. { type: "order_authorized", order_id, loc } */
   data: NotificationData | null
   read: boolean
   read_at: number | null

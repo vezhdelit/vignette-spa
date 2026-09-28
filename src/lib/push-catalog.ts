@@ -3,7 +3,7 @@
  * docs/push/ios-integration.md §3 "Rendering the device's language"). A push,
  * and every row of GET /public/me/notifications, carries `data.loc`:
  *
- *   { title: "notifications.order_paid.title", body: "notifications.order_paid.body", args: { country: "at" } }
+ *   { title: "notifications.order_authorized.title", body: "notifications.order_authorized.body", args: { country: "at", plate: "…", start_date: …, end_date: … } }
  *
  * plus the English sentence as `title`/`body`, which is the fallback. The
  * strings are the `notifications.<type>.*` keys of the API's translations

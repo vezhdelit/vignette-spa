@@ -390,5 +390,6 @@
     "few": "przejazdy",
     "many": "przejazdów",
     "other": "przejazdu"
-  }
+  },
+  "orderCard.tunnelOf": "Tunel {name}"
 }

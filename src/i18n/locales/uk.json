@@ -390,5 +390,6 @@
     "few": "поїздки",
     "many": "поїздок",
     "other": "поїздки"
-  }
+  },
+  "orderCard.tunnelOf": "Тунель {name}"
 }

@@ -86,6 +86,7 @@ export const en = {
   "orderCard.from": "From",
   "orderCard.until": "until",
   "orderCard.vignetteOf": "Vignette of {country}",
+  "orderCard.tunnelOf": "Tunnel {name}",
   "orderCard.detailsLabel": "Details",
   "orderCard.promo.cashbackPending": "cashback after payment",
   "orderCard.promo.cashbackGranted": "cashback credited to your wallet",

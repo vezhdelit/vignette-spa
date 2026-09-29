@@ -43,6 +43,7 @@ import { PlateBadge } from "@/components/order/PlateBadge"
 import { VehicleLookupRow } from "@/components/order/VehicleLookup"
 import { FlagRect } from "@/lib/countries"
 import { countryLabel, PLATE_COUNTRIES, Flag } from "@/lib/countries"
+import { tunnelTitle } from "@/lib/tunnels"
 import {
   formatDotDateTime,
   formatEndDate,
@@ -311,7 +312,9 @@ export function OrderCard({
           <span className="flex min-w-0 items-center gap-2">
             <FlagRect code={order.country} className="h-5 w-7 shrink-0 rounded" />
             <span className="truncate text-xs font-extrabold whitespace-nowrap text-navy uppercase">
-              {t("orderCard.vignetteOf", { country: countryName })}
+              {order.type === "tunnel"
+                ? t("orderCard.tunnelOf", { name: tunnelTitle(order.product) })
+                : t("orderCard.vignetteOf", { country: countryName })}
             </span>
           </span>
           <span className="flex items-center gap-2">

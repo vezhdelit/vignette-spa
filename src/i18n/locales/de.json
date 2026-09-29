@@ -374,5 +374,6 @@
   "unit.journeys": {
     "one": "Fahrt",
     "other": "Fahrten"
-  }
+  },
+  "orderCard.tunnelOf": "Tunnel {name}"
 }

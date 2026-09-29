@@ -11,6 +11,7 @@ import { AccountPage } from "@/pages/AccountPage"
 import { NotificationsPage } from "@/pages/NotificationsPage"
 import { dropSessionQueries, queryClient } from "@/lib/query"
 import { useLanguage } from "@/i18n"
+import { usePushLocaleSync } from "@/queries/push"
 import { useAuthStore } from "@/stores/auth"
 import { captureInviteCodeFromUrl } from "@/stores/invite"
 import { isAccountScreen, usePushFocusStore } from "@/stores/push-focus"
@@ -22,6 +23,9 @@ export default function App() {
   // `t()` (module-level helpers, formatters) rather than `useT()`. See the
   // note in src/i18n/index.ts.
   useLanguage()
+  // Re-POSTs /public/devices' `locale`/`timezone` when either drifts from
+  // what this install last told the server — a no-op until push is on.
+  usePushLocaleSync()
 
   useEffect(() => {
     // Before anything else: a visitor who followed /r/<code> (or arrived

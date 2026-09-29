@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api, apiResult } from "@/lib/api"
 import {
@@ -8,6 +9,7 @@ import {
   webPushSupported,
 } from "@/lib/webpush"
 import { track, trackCustom } from "@/lib/insights"
+import { apiLanguage, useLanguage } from "@/i18n"
 
 /**
  * Web push registration — the browser as a push install, mirroring what the
@@ -27,6 +29,43 @@ function browserTimezone(): string | undefined {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined
   } catch {
     return undefined
+  }
+}
+
+// What `locale`/`timezone` this browser last told the server, so a mount
+// that already matches skips the call — the client-API's cheap rule for
+// "re-register whenever either differs" (docs/push/web-integration.md).
+// Keyed like `getInstallationId()`'s own storage; missing/unreadable just
+// means the next check re-sends, which costs nothing.
+const LAST_SENT_KEY = "vignette-spa.push-locale-sent"
+
+interface SentPushMeta {
+  locale: string
+  timezone: string | undefined
+}
+
+function readSentLocale(): SentPushMeta | null {
+  try {
+    const raw = localStorage.getItem(LAST_SENT_KEY)
+    return raw ? (JSON.parse(raw) as SentPushMeta) : null
+  } catch {
+    return null
+  }
+}
+
+function rememberSentLocale(meta: SentPushMeta): void {
+  try {
+    localStorage.setItem(LAST_SENT_KEY, JSON.stringify(meta))
+  } catch {
+    /* private mode / storage blocked — every mount just re-sends */
+  }
+}
+
+function forgetSentLocale(): void {
+  try {
+    localStorage.removeItem(LAST_SENT_KEY)
+  } catch {
+    /* ignore */
   }
 }
 
@@ -80,6 +119,9 @@ export function useEnablePush() {
 
       const subscription = await subscribe(public_key)
 
+      const timezone = browserTimezone()
+      const locale = apiLanguage()
+
       await apiResult("/public/devices", {
         method: "POST",
         body: {
@@ -90,9 +132,15 @@ export function useEnablePush() {
           // (22:00–08:00 local). Those channels are on by default, so no
           // `channels` field is needed; a settings switch would send
           // `channels: { news: false }` to turn one off.
-          timezone: browserTimezone(),
+          timezone,
+          // The app's own language, not the device's — a person who picked
+          // a language here overrode the device, and that override is what
+          // support should see. Informational only: pushes are still
+          // translated on the device from the catalogue.
+          locale,
         },
       })
+      rememberSentLocale({ locale, timezone })
 
       return { status: "registered", subscription }
     },
@@ -129,6 +177,54 @@ export function useDisablePush() {
       // which is not what happened here — the permission is still granted.
       trackCustom("push.disabled")
       queryClient.setQueryData(pushKeys.subscription, null)
+      forgetSentLocale()
     },
   })
+}
+
+/**
+ * Keeps the server's `locale`/`timezone` for this install in step with the
+ * browser. The client-API contract puts the burden on the client because
+ * a page never "relaunches" the way an app does on a system language
+ * change: every switch is the in-app case, so this is the only signal
+ * there is. Mount once near the app root (see `App.tsx`'s
+ * `InsightsTracker`-style trackers) — a no-op whenever push was never
+ * enabled, and at most one POST per language or timezone change, since the
+ * last value actually sent is remembered locally and compared first.
+ */
+export function usePushLocaleSync(): void {
+  const subscription = usePushSubscription().data ?? null
+  const language = useLanguage()
+  const inFlight = useRef(false)
+
+  useEffect(() => {
+    if (!subscription || inFlight.current) return
+
+    const timezone = browserTimezone()
+    const locale = apiLanguage()
+    const last = readSentLocale()
+    if (last && last.locale === locale && last.timezone === timezone) return
+
+    inFlight.current = true
+    void apiResult("/public/devices", {
+      method: "POST",
+      body: {
+        installation_id: getInstallationId(),
+        platform: "web",
+        token: subscription.toJSON(),
+        timezone,
+        locale,
+      },
+    })
+      .then(() => rememberSentLocale({ locale, timezone }))
+      .catch(() => {
+        // Best-effort: nothing in the UI depends on this succeeding right
+        // away, and the next language change or page load tries again.
+      })
+      .finally(() => {
+        inFlight.current = false
+      })
+    // `language` drives the retrigger on a switch; `locale` above is read
+    // fresh from the store rather than depended on directly.
+  }, [subscription, language])
 }

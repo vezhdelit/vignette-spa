@@ -6,8 +6,17 @@
  * docs/push/web-integration.md):
  *
  *   GET    /public/devices/web-push-key   -> { public_key } (or 404 not_configured)
- *   POST   /public/devices                { installation_id, platform: "web", token }
+ *   POST   /public/devices                { installation_id, platform: "web", token,
+ *                                            timezone?, locale? }
  *   DELETE /public/devices                { installation_id }
+ *
+ * `locale` (added 2026-09-29, optional) is the UI language, sent by the
+ * caller in `queries/push.ts` — see `usePushLocaleSync` there for how it
+ * stays in step with an in-app language switch.
+ *
+ * There is no `country` field to send: the server stamps it itself from
+ * the registration request's `cf-ipcountry` header (same as insights'
+ * `context.country`), so nothing here or in `queries/push.ts` sends one.
  */
 
 // The browser-profile equivalent of the iOS app's Keychain-held

@@ -23,9 +23,6 @@ export default function App() {
   // `t()` (module-level helpers, formatters) rather than `useT()`. See the
   // note in src/i18n/index.ts.
   useLanguage()
-  // Re-POSTs /public/devices' `locale`/`timezone` when either drifts from
-  // what this install last told the server — a no-op until push is on.
-  usePushLocaleSync()
 
   useEffect(() => {
     // Before anything else: a visitor who followed /r/<code> (or arrived
@@ -42,6 +39,7 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <InsightsTracker />
+        <PushLocaleSyncTracker />
         <PushFocusRoute />
         {/* spends an invite code the visitor arrived with, once there is an
             account to attach it to */}
@@ -59,6 +57,20 @@ export default function App() {
       </BrowserRouter>
     </QueryClientProvider>
   )
+}
+
+/**
+ * Re-POSTs /public/devices' `locale`/`timezone` when either drifts from
+ * what this install last told the server — a no-op until push is on. A
+ * real component, not a bare hook call inside `App`: `usePushLocaleSync`
+ * uses `useQuery` internally, which needs a `QueryClientProvider`
+ * ancestor in the RENDERED tree, not merely one that appears later in the
+ * same function. Calling it directly in `App()` crashed every mount (no
+ * QueryClient in context yet) — see the commit that added it.
+ */
+function PushLocaleSyncTracker() {
+  usePushLocaleSync()
+  return null
 }
 
 /**

@@ -34,8 +34,11 @@ export const catalogKeys = {
  */
 async function fetchCatalog(currency: string): Promise<Catalog> {
   const [products, flexOptions] = await Promise.all([
+    // No `type` filter: the endpoint serves vignettes AND tunnel passes in
+    // one flat list (controllers/public/products.js), told apart by each
+    // row's `type`. Asking for type=vignette was why tunnels never showed.
     apiResult<CatalogProduct[]>("/public/catalog/products", {
-      query: { currency, type: "vignette" },
+      query: { currency },
     }),
     apiResult<FlexOption[]>("/public/catalog/products/flex", {
       query: { currency },
@@ -74,11 +77,34 @@ export function useCatalog(currency?: string) {
   })
 }
 
-/** Sellable products of one country, in display priority. */
-export function productsFor(catalog: Catalog, country: string): CatalogProduct[] {
+/** Sellable products of one country and type, in display priority. */
+function sellable(
+  catalog: Catalog,
+  country: string,
+  type: CatalogProduct["type"],
+): CatalogProduct[] {
   return catalog.products
-    .filter((p) => p.country === country && Object.keys(p.price).length > 0)
+    .filter(
+      (p) =>
+        p.country === country &&
+        p.type === type &&
+        Object.keys(p.price).length > 0,
+    )
     .sort((a, b) => a.priority - b.priority)
+}
+
+/** Sellable vignettes of one country, in display priority. */
+export function productsFor(catalog: Catalog, country: string): CatalogProduct[] {
+  return sellable(catalog, country, "vignette")
+}
+
+/**
+ * Sellable tunnel passes of one country — Austria's section tolls and the
+ * Swiss Munt La Schera. Their price keys are journeys ("1j", "2j") and
+ * sometimes "365", not day counts.
+ */
+export function tunnelsFor(catalog: Catalog, country: string): CatalogProduct[] {
+  return sellable(catalog, country, "tunnel")
 }
 
 /** The flex tier flagged is_default by GET /public/catalog/products/flex. */

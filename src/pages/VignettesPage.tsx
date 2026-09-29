@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/empty"
 import { apiErrorMessage } from "@/lib/api"
 import { useT } from "@/i18n"
-import { EMPTY_CATALOG, productsFor, useCatalog } from "@/queries/catalog"
+import { EMPTY_CATALOG, productsFor, tunnelsFor, useCatalog } from "@/queries/catalog"
 import { CountryCarousel } from "@/components/vignettes/CountryCarousel"
 import {
   ProductCard,
@@ -61,6 +61,9 @@ export function VignettesPage() {
   }, [loaded, searchParams, countries, catalog.products, setSearchParams])
 
   const products = productsFor(catalog, country)
+  // Austria's section tolls, the Swiss Munt La Schera — most countries have
+  // none, and then the section simply isn't there.
+  const tunnels = tunnelsFor(catalog, country)
 
   return (
     <div className="-mx-4">
@@ -89,7 +92,7 @@ export function VignettesPage() {
               </Button>
             </AlertAction>
           </Alert>
-        ) : products.length === 0 ? (
+        ) : products.length === 0 && tunnels.length === 0 ? (
           <Empty className="border-0 pt-8">
             <EmptyHeader>
               <EmptyDescription className="font-semibold text-white/90">
@@ -98,16 +101,35 @@ export function VignettesPage() {
             </EmptyHeader>
           </Empty>
         ) : (
-          products.map((product) => (
-            <ProductCard
-              key={product.name}
-              product={product}
-              onSelect={() => {
-                setSelectedProduct(product)
-                setSheetOpen(true)
-              }}
-            />
-          ))
+          <>
+            {products.map((product) => (
+              <ProductCard
+                key={product.name}
+                product={product}
+                onSelect={() => {
+                  setSelectedProduct(product)
+                  setSheetOpen(true)
+                }}
+              />
+            ))}
+            {tunnels.length > 0 && (
+              <>
+                <h2 className="pt-3 pl-1 text-xs font-extrabold tracking-[0.2em] text-white/90 uppercase">
+                  {t("catalog.tunnels")}
+                </h2>
+                {tunnels.map((product) => (
+                  <ProductCard
+                    key={product.name}
+                    product={product}
+                    onSelect={() => {
+                      setSelectedProduct(product)
+                      setSheetOpen(true)
+                    }}
+                  />
+                ))}
+              </>
+            )}
+          </>
         )}
       </div>
 

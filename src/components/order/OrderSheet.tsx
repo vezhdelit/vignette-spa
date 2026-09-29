@@ -49,6 +49,8 @@ import {
   formatCents,
   formatDayMonth,
   formatPrice,
+  journeyCount,
+  periodDays,
   periodLabel,
 } from "@/lib/format"
 import { useT, type MessageKey } from "@/i18n"
@@ -197,10 +199,15 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   // just the id — POST returns a slim stub; the poll fetches the full order
   const [createdOrder, setCreatedOrder] = useState<{ id: string } | null>(null)
 
-  // popularity order (matches the app), skipping periods flagged "disabled"
+  // popularity order (matches the app), skipping periods flagged "disabled".
+  // Tunnels sell journeys ("1j", "2j") and sometimes a year: the return
+  // journey leads, matching the website's default.
   const periods = useMemo(() => {
     if (!product) return []
-    const PREFERRED = ["30", "10", "1", "7", "15", "60", "90", "365"]
+    const PREFERRED =
+      product.type === "tunnel"
+        ? ["2j", "1j", "365"]
+        : ["30", "10", "1", "7", "15", "60", "90", "365"]
     return Object.keys(product.price)
       .filter((p) => !product.price[p].restrictions?.includes("disabled"))
       .sort((a, b) => {
@@ -237,7 +244,9 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
       setAppliedCode(null)
       setPromo(null)
       setPromoError(null)
-      setFlexEnabled(true)
+      // Flex is trip protection for a vignette; a tunnel pass has nothing
+      // for it to protect, so it never rides on one.
+      setFlexEnabled(product.type !== "tunnel")
       // read, not subscribed: a catalog refetch mid-order must not reset the form
       setFlexType(
         defaultFlexType(
@@ -430,7 +439,10 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
     currency !== "EUR" && eurPrice
       ? Math.round((eurPrice.total_price + (flexEnabled ? eurFlexPrice : 0)) * 100) / 100
       : null
-  const endDate = period ? addDays(startDate, Number(period)) - 60 : startDate
+  // A journey pass is valid for a year from its start date whatever its
+  // trip count — periodDays maps "1j"/"2j" to 365, day counts to themselves.
+  const endDate = period ? addDays(startDate, periodDays(period)) - 60 : startDate
+  const isTunnel = product.type === "tunnel"
   const isToday = startDate === dayStart(0)
   const isTomorrow = startDate === dayStart(1)
   const emailValid = /.+@.+\..+/.test(email)
@@ -769,6 +781,20 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
               <>
                 <ProductSummary product={product} />
 
+                {/* The Karawanks pass is sold for one direction only; the
+                    card's chip says the direction, this says it is a limit.
+                    "Both sides" needs no warning. */}
+                {isTunnel &&
+                  product.restrictions?.direction &&
+                  !/both/i.test(product.restrictions.direction) && (
+                    <p className="mt-2 px-1 text-center text-sm font-bold text-white">
+                      ⚠️{" "}
+                      {t("order.tunnelDirectionOnly", {
+                        direction: product.restrictions.direction,
+                      })}
+                    </p>
+                  )}
+
                 {/* plate + vin */}
                 <Card className="mt-3 rounded-[24px] ring-0">
                   <CardContent className="flex items-center gap-2.5">
@@ -1076,16 +1102,18 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                         />
                       </div>
                     )}
-                    <FlexPanel
-                      enabled={flexEnabled}
-                      onEnabled={onFlexEnabled}
-                      type={flexType}
-                      onType={onFlexType}
-                      defaultPrice={flexOptions.find((f) => f.type === "default")?.price ?? 2.99}
-                      expandedPrice={flexOptions.find((f) => f.type === "expanded")?.price ?? 5.98}
-                      currency={currency}
-                      showBadges
-                    />
+                    {!isTunnel && (
+                      <FlexPanel
+                        enabled={flexEnabled}
+                        onEnabled={onFlexEnabled}
+                        type={flexType}
+                        onType={onFlexType}
+                        defaultPrice={flexOptions.find((f) => f.type === "default")?.price ?? 2.99}
+                        expandedPrice={flexOptions.find((f) => f.type === "expanded")?.price ?? 5.98}
+                        currency={currency}
+                        showBadges
+                      />
+                    )}
                   </CardContent>
                 </Card>
 
@@ -1222,16 +1250,18 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
 
                 <Card className="mt-4 rounded-[24px] bg-brand-deep/60 text-white ring-0">
                   <CardContent>
-                    <FlexPanel
-                      enabled={flexEnabled}
-                      onEnabled={onFlexEnabled}
-                      type={flexType}
-                      onType={onFlexType}
-                      defaultPrice={flexOptions.find((f) => f.type === "default")?.price ?? 2.99}
-                      expandedPrice={flexOptions.find((f) => f.type === "expanded")?.price ?? 5.98}
-                      currency={currency}
-                      showBadges
-                    />
+                    {!isTunnel && (
+                      <FlexPanel
+                        enabled={flexEnabled}
+                        onEnabled={onFlexEnabled}
+                        type={flexType}
+                        onType={onFlexType}
+                        defaultPrice={flexOptions.find((f) => f.type === "default")?.price ?? 2.99}
+                        expandedPrice={flexOptions.find((f) => f.type === "expanded")?.price ?? 5.98}
+                        currency={currency}
+                        showBadges
+                      />
+                    )}
                     <PromoCodeInput
                       code={promoCode}
                       onCode={setPromoCode}
@@ -1528,9 +1558,13 @@ function CalendarChip({ days }: { days: string }) {
         <span className="absolute top-0.5 right-2.5 h-2 w-1 rounded-full bg-[#3a5ba9]" />
       </span>
       <span className="py-0.5 text-center leading-tight">
-        <span className="block text-lg font-extrabold text-[#3b4a6b]">{days}</span>
+        <span className="block text-lg font-extrabold text-[#3b4a6b]">
+          {journeyCount(days) ?? days}
+        </span>
         <span className="block pb-0.5 text-[9px] font-extrabold tracking-wider text-[#f2717c] uppercase">
-          {t("unit.days", { count: Number(days) })}
+          {journeyCount(days) !== null
+            ? t("unit.journeys", { count: journeyCount(days)! })
+            : t("unit.days", { count: Number(days) })}
         </span>
       </span>
     </span>

@@ -364,5 +364,15 @@
   "account.referrals.level": "Stufe {level}",
   "account.referrals.codeInvalid": "Dieser Einladungscode ist nicht mehr gültig.",
   "wallet.topUp.payAmount": "{amount} aufladen",
-  "wallet.topUp.currentBalance": "Du hast jetzt {amount}"
+  "wallet.topUp.currentBalance": "Du hast jetzt {amount}",
+  "catalog.tunnels": "Tunnel-Tickets",
+  "order.tunnelDirectionOnly": "Nur eine Richtung — {direction}",
+  "period.journeys": {
+    "one": "{count} Fahrt",
+    "other": "{count} Fahrten"
+  },
+  "unit.journeys": {
+    "one": "Fahrt",
+    "other": "Fahrten"
+  }
 }

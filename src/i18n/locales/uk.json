@@ -376,5 +376,19 @@
   "account.referrals.level": "рівень {level}",
   "account.referrals.codeInvalid": "Цей код запрошення більше не дійсний.",
   "wallet.topUp.payAmount": "Поповнити на {amount}",
-  "wallet.topUp.currentBalance": "Зараз у вас {amount}"
+  "wallet.topUp.currentBalance": "Зараз у вас {amount}",
+  "catalog.tunnels": "Тунельні проїзди",
+  "order.tunnelDirectionOnly": "Лише в один бік — {direction}",
+  "period.journeys": {
+    "one": "{count} поїздка",
+    "few": "{count} поїздки",
+    "many": "{count} поїздок",
+    "other": "{count} поїздки"
+  },
+  "unit.journeys": {
+    "one": "поїздка",
+    "few": "поїздки",
+    "many": "поїздок",
+    "other": "поїздки"
+  }
 }

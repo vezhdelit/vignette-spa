@@ -376,5 +376,19 @@
   "account.referrals.level": "poziom {level}",
   "account.referrals.codeInvalid": "Ten kod zaproszenia jest już nieważny.",
   "wallet.topUp.payAmount": "Doładuj o {amount}",
-  "wallet.topUp.currentBalance": "Masz teraz {amount}"
+  "wallet.topUp.currentBalance": "Masz teraz {amount}",
+  "catalog.tunnels": "Przejazdy tunelami",
+  "order.tunnelDirectionOnly": "Tylko w jedną stronę — {direction}",
+  "period.journeys": {
+    "one": "{count} przejazd",
+    "few": "{count} przejazdy",
+    "many": "{count} przejazdów",
+    "other": "{count} przejazdu"
+  },
+  "unit.journeys": {
+    "one": "przejazd",
+    "few": "przejazdy",
+    "many": "przejazdów",
+    "other": "przejazdu"
+  }
 }

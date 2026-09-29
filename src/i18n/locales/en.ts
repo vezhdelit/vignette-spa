@@ -45,9 +45,12 @@ export const en = {
   /* ------------------------------------------------------- units & periods */
   "period.days": { one: "{count} day", other: "{count} days" },
   "period.years": { one: "{count} year", other: "{count} years" },
+  // tunnel passes sell trips, not days ("1j" / "2j" on the wire)
+  "period.journeys": { one: "{count} journey", other: "{count} journeys" },
   /** the short unit under the big number on a period chip / order badge */
   "unit.days": { one: "day", other: "days" },
   "unit.years": { one: "year", other: "years" },
+  "unit.journeys": { one: "journey", other: "journeys" },
 
   /* ------------------------------------------------------------- home tab */
   "home.loadErrorTitle": "Couldn't load your vignettes",
@@ -133,6 +136,8 @@ export const en = {
   "catalog.loadErrorTitle": "Couldn't load the catalog",
   "catalog.loadErrorBody": "Failed to load catalog",
   "catalog.empty": "No vignettes available for this country yet.",
+  "catalog.tunnels": "Tunnel passes",
+  "order.tunnelDirectionOnly": "One direction only — {direction}",
   "catalog.countryLabel": "Country",
   "product.priceFrom": "from",
   "product.select": "Select",

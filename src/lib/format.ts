@@ -141,17 +141,43 @@ export function addDays(unixSeconds: number, days: number): number {
  * (the period chip, the order card's badge) doesn't have to split a sentence
  * — which only works in English.
  */
+/**
+ * "1j" / "2j" are journey passes — the Austrian tunnels sell a count of
+ * trips, not days (the server's period-label.js says the same). Null for
+ * every day-count period.
+ */
+export function journeyCount(period: string | number): number | null {
+  const match = String(period).match(/^(\d+)j$/i)
+  return match ? Number(match[1]) : null
+}
+
 export function periodParts(period: string | number): { count: string; unit: string } {
+  const journeys = journeyCount(period)
+  if (journeys !== null) {
+    return { count: String(journeys), unit: t("unit.journeys", { count: journeys }) }
+  }
   const days = Number(period)
   if (!Number.isFinite(days)) return { count: String(period), unit: t("unit.days", { count: 2 }) }
   if (days === 365 || days === 366) return { count: "1", unit: t("unit.years", { count: 1 }) }
   return { count: String(days), unit: t("unit.days", { count: days }) }
 }
 
-/** "30" → "30 days", "365" → "1 year" — plural-correct in every language. */
+/** "30" → "30 days", "365" → "1 year", "2j" → "2 journeys" — plural-correct in every language. */
 export function periodLabel(period: string | number): string {
+  const journeys = journeyCount(period)
+  if (journeys !== null) return t("period.journeys", { count: journeys })
   const days = Number(period)
   if (!Number.isFinite(days)) return String(period)
   if (days === 365 || days === 366) return t("period.years", { count: 1 })
   return t("period.days", { count: days })
+}
+
+/**
+ * How long a period keeps the order valid, in days — what the end date is
+ * computed from. A journey pass is usable for a year from its start date
+ * whatever its trip count (the server's expirations.js does the same).
+ */
+export function periodDays(period: string | number): number {
+  if (journeyCount(period) !== null) return 365
+  return Number(period)
 }

@@ -14,7 +14,11 @@ import { useLanguage } from "@/i18n"
 import { usePushLocaleSync } from "@/queries/push"
 import { useAuthStore } from "@/stores/auth"
 import { captureInviteCodeFromUrl } from "@/stores/invite"
-import { isAccountScreen, usePushFocusStore } from "@/stores/push-focus"
+import {
+  isAccountScreen,
+  screenOnlyRoute,
+  usePushFocusStore,
+} from "@/stores/push-focus"
 
 export default function App() {
   const bootstrap = useAuthStore((s) => s.bootstrap)
@@ -77,7 +81,12 @@ function PushLocaleSyncTracker() {
  * A push about the wallet or a referral reward opens "/" like every other
  * tap — the service worker has one URL to give — so send it on to the page
  * that actually holds those. Orders are Home's business (HomePage reads the
- * same focus), and the two never both act on one push: the screen decides.
+ * same focus), and the two never both act on one push: an account screen
+ * always wins (a refund-to-wallet push carries an order id AND
+ * screen: "balance", and the wallet is the answer); any other screen routes
+ * only when no order is named — an admin's "Support" or "Vignettes catalog"
+ * message, a broadcast — because with an order id the card on Home says
+ * more than any tab.
  */
 function PushFocusRoute() {
   const navigate = useNavigate()
@@ -85,9 +94,17 @@ function PushFocusRoute() {
   const clear = usePushFocusStore((s) => s.clear)
 
   useEffect(() => {
-    if (!isAccountScreen(focus?.screen ?? null)) return
-    clear()
-    navigate("/account")
+    if (!focus) return
+    if (isAccountScreen(focus.screen)) {
+      clear()
+      navigate("/account")
+      return
+    }
+    const route = focus.orderId ? null : screenOnlyRoute(focus.screen)
+    if (route) {
+      clear()
+      navigate(route)
+    }
   }, [focus, navigate, clear])
 
   return null

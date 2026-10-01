@@ -85,6 +85,8 @@ export const en = {
     "Sign in on the Account tab to transfer, modify or add to Wallet.",
   "orderCard.from": "From",
   "orderCard.until": "until",
+  "orderCard.journeysLeft": { one: "{count} journey left", other: "{count} journeys left" },
+  "orderCard.journeysUsedUp": "All journeys used",
   "orderCard.vignetteOf": "Vignette of {country}",
   "orderCard.tunnelOf": "Tunnel {name}",
   "orderCard.detailsLabel": "Details",

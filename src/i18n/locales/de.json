@@ -60,6 +60,11 @@
   "orderCard.guestNote": "Melden Sie sich im Tab „Konto“ an, um zu übertragen, zu ändern oder zu Wallet hinzuzufügen.",
   "orderCard.from": "Von",
   "orderCard.until": "bis",
+  "orderCard.journeysLeft": {
+    "one": "Noch {count} Fahrt",
+    "other": "Noch {count} Fahrten"
+  },
+  "orderCard.journeysUsedUp": "Alle Fahrten genutzt",
   "orderCard.vignetteOf": "Vignette für {country}",
   "orderCard.detailsLabel": "Details",
   "orderCard.promo.cashbackPending": "Cashback nach der Zahlung",

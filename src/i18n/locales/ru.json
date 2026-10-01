@@ -68,6 +68,13 @@
   "orderCard.guestNote": "Войдите на вкладке «Аккаунт», чтобы передать, изменить или добавить в Wallet.",
   "orderCard.from": "С",
   "orderCard.until": "до",
+  "orderCard.journeysLeft": {
+    "one": "Осталась {count} поездка",
+    "few": "Осталось {count} поездки",
+    "many": "Осталось {count} поездок",
+    "other": "Осталось {count} поездки"
+  },
+  "orderCard.journeysUsedUp": "Все поездки использованы",
   "orderCard.vignetteOf": "Виньетка {country}",
   "orderCard.detailsLabel": "Детали",
   "orderCard.promo.cashbackPending": "кешбэка после оплаты",

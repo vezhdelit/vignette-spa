@@ -389,6 +389,20 @@ function OrderSummary({ order, theme }: { order: Order; theme: StatusTheme }) {
         <span className="text-navy-soft"> {t("orderCard.until")} </span>
         <span className="font-bold text-mint-deep">{formatEndDate(order.end_date)}</span>
       </p>
+      {/* a tunnel pass: how many of its journeys are still to use. Not
+          while unpaid — nothing has been issued to count down yet */}
+      {typeof order.journeys_left === "number" && order.status !== "CREATED" && (
+        <p
+          className={cn(
+            "mt-1 text-[13px] font-bold",
+            order.journeys_left > 0 ? "text-mint-deep" : "text-navy-soft"
+          )}
+        >
+          {order.journeys_left > 0
+            ? t("orderCard.journeysLeft", { count: order.journeys_left })
+            : t("orderCard.journeysUsedUp")}
+        </p>
+      )}
     </>
   )
 }

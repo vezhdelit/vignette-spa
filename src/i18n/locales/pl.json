@@ -68,6 +68,13 @@
   "orderCard.guestNote": "Zaloguj się w zakładce „Konto”, aby przekazać, zmienić lub dodać do Wallet.",
   "orderCard.from": "Od",
   "orderCard.until": "do",
+  "orderCard.journeysLeft": {
+    "one": "Został {count} przejazd",
+    "few": "Zostały {count} przejazdy",
+    "many": "Zostało {count} przejazdów",
+    "other": "Zostało {count} przejazdu"
+  },
+  "orderCard.journeysUsedUp": "Wszystkie przejazdy wykorzystane",
   "orderCard.vignetteOf": "Winieta — {country}",
   "orderCard.detailsLabel": "Szczegóły",
   "orderCard.promo.cashbackPending": "cashbacku po płatności",

@@ -374,6 +374,12 @@ export interface Order {
    *  unix validity window (helpers/order-status.js#prepareDates), or null */
   end_date: number | string | null
   period: string | number
+  /**
+   * A tunnel pass's journeys left, 2 → 1 → 0 as each is used; at 0 the pass
+   * is EXPIRED whatever its date. Null for products sold by days, and for a
+   * pass whose count was never recorded.
+   */
+  journeys_left?: number | null
   type: string
   country: string
   status: OrderStatusLabel

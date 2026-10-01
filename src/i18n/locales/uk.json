@@ -68,6 +68,13 @@
   "orderCard.guestNote": "Увійдіть на вкладці «Акаунт», щоб передати, змінити або додати до Wallet.",
   "orderCard.from": "З",
   "orderCard.until": "до",
+  "orderCard.journeysLeft": {
+    "one": "Залишилась {count} поїздка",
+    "few": "Залишилось {count} поїздки",
+    "many": "Залишилось {count} поїздок",
+    "other": "Залишилось {count} поїздки"
+  },
+  "orderCard.journeysUsedUp": "Усі поїздки використано",
   "orderCard.vignetteOf": "Віньєтка {country}",
   "orderCard.detailsLabel": "Деталі",
   "orderCard.promo.cashbackPending": "кешбеку після оплати",

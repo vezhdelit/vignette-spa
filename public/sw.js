@@ -100,14 +100,20 @@ function renderField(key, args, fallback, catalog) {
 }
 
 // {for_country} / {in_country}: the `country` argument as a whole phrase from
-// the catalog (notifications.<role>.<code>) — the twin of
-// src/lib/push-catalog.ts#fillPlaceholder.
+// the catalog (notifications.<role>.<code>); {product_noun}: the
+// `product_kind` argument as the family word (notifications.product_noun.
+// <kind>) — the twin of src/lib/push-catalog.ts#fillPlaceholder.
 function fillPlaceholder(name, args, catalog) {
   const has = (n) => Object.prototype.hasOwnProperty.call(args, n)
   if (name === "for_country" || name === "in_country") {
     if (!has("country")) return null
     const phrase = catalog.strings["notifications." + name + "." + String(args.country).toLowerCase()]
     return typeof phrase === "string" ? phrase : null
+  }
+  if (name === "product_noun") {
+    if (!has("product_kind")) return null
+    const noun = catalog.strings["notifications.product_noun." + String(args.product_kind)]
+    return typeof noun === "string" ? noun : null
   }
   return has(name) ? formatArg(name, args[name], catalog) : null
 }

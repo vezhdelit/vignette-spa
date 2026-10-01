@@ -290,7 +290,7 @@ export interface Vehicle {
 export interface PushLoc {
   title: string | null
   body: string | null
-  /** raw values formatted by name: country (ISO code — also behind {for_country}/{in_country}), plate, start_date/end_date/date (unix), amount (cents), period, count */
+  /** raw values formatted by name: country (ISO code — also behind {for_country}/{in_country}), plate, start_date/end_date/date (unix), amount (cents), period, count; product_kind (behind {product_noun}), product_label (class or tunnel name) */
   args: Record<string, string | number>
 }
 

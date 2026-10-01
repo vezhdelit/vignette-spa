@@ -26,8 +26,11 @@
  *   with two decimals — the € sign is in the template. `{for_country}` /
  *   `{in_country}` are not arguments: they render `country` as a whole
  *   phrase from the catalog (`notifications.for_country.<code>`), which is
- *   how languages that decline country names stay grammatical. A field with
- *   a hole the catalog cannot fill falls back to the English.
+ *   how languages that decline country names stay grammatical.
+ *   `{product_noun}` works the same way for `product_kind`
+ *   (`notifications.product_noun.<kind>` — "Віньєтка", "Тунель"); the class
+ *   or tunnel name beside it is the plain `{product_label}` argument. A field
+ *   with a hole the catalog cannot fill falls back to the English.
  *
  * The worker's copy of these rules is in public/sw.js#formatArg; keep the two
  * in step, or the banner and the inbox disagree about the same message.
@@ -279,6 +282,13 @@ function fillPlaceholder(
     if (!("country" in args)) return null
     const phrase = catalog.strings[`notifications.${name}.${String(args.country).toLowerCase()}`]
     return typeof phrase === "string" ? phrase : null
+  }
+  // {product_noun}: the `product_kind` argument as the family word from the
+  // catalog ("Віньєтка", "Тунель") — the same shape as a country phrase.
+  if (name === "product_noun") {
+    if (!("product_kind" in args)) return null
+    const noun = catalog.strings[`notifications.product_noun.${String(args.product_kind)}`]
+    return typeof noun === "string" ? noun : null
   }
   return name in args ? formatArg(name, args[name], catalog) : null
 }

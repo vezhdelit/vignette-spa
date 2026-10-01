@@ -25,6 +25,38 @@ export const EMISSION_NORMS = [
 
 export type EmissionNorm = (typeof EMISSION_NORMS)[number]
 
+/** The picker's order: most emissions first, like the colour bar over it. */
+export const EMISSION_NORMS_BY_EMISSIONS = [...EMISSION_NORMS].reverse()
+
+/** Badge colours, dirtiest (warm) to cleanest (green). */
+export const EMISSION_NORM_COLORS: Record<EmissionNorm, string> = {
+  euro0: "#E39086",
+  euro1: "#E8A07C",
+  euro2: "#EBB27A",
+  euro3: "#EAC47E",
+  euro4: "#DDD08A",
+  euro5: "#BBCF92",
+  euro6: "#9CCBA4",
+  electric: "#86BE9C",
+}
+
+/**
+ * Typical first-registration years of a passenger car per norm, a hint for
+ * someone who doesn't know theirs: [from, to], null for open-ended.
+ */
+export const EMISSION_NORM_YEARS: Record<
+  Exclude<EmissionNorm, "electric">,
+  [number | null, number | null]
+> = {
+  euro0: [null, 1992],
+  euro1: [1992, 1996],
+  euro2: [1996, 2000],
+  euro3: [2000, 2005],
+  euro4: [2005, 2009],
+  euro5: [2009, 2014],
+  euro6: [2014, null],
+}
+
 /**
  * The class that prices each norm. The server's grouping
  * (api/helpers/emission-classes.js#NORM_CLASS) — keep the two equal.

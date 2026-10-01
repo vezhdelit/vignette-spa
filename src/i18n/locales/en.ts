@@ -221,6 +221,17 @@ export const en = {
   "emission.priceFor": "Price for {class}",
   "emission.hint":
     "{country} prices by emission class. Without it we charge the {class} price.",
+  "emission.fieldHint": "field {field} of the registration certificate",
+  "emission.more": "More emissions",
+  "emission.cleaner": "Cleaner",
+  "emission.yearsBefore": "before ~{year}",
+  "emission.yearsRange": "~{from} – {to}",
+  "emission.yearsAfter": "~{year} and later",
+  "emission.electricNote": "Battery electric vehicle",
+  "emission.yearsNote":
+    "Years are typical first-registration dates for passenger cars. If unsure, check {field}.",
+  "emission.confirm": "Confirm",
+  "emission.close": "Close",
 
   /* ----------------------------------------------------------- promo code */
   "promo.label": "Promo code",

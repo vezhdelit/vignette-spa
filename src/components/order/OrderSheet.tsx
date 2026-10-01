@@ -185,11 +185,10 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   })
   // The Euro norm picked for a product priced by emission class (lib/
   // emission.ts); null = none, which the server prices as the period's
-  // default class. `emissionOpen` lets the savings banner open the picker.
-  // What is priced and sent is `activeNorm` (below), not this.
+  // default class. `emissionOpen` lets the savings banner open the picker
+  // sheet. What is priced and sent is `activeNorm` (below), not this.
   const [emissionNorm, setEmissionNorm] = useState<EmissionNorm | null>(null)
   const [emissionOpen, setEmissionOpen] = useState(false)
-  const emissionTrigger = useRef<HTMLButtonElement>(null)
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null)
   // the server's own verdict on the plate (POST /public/vehicles/validate),
   // asked once when leaving step 1 — distinct from the local rules check
@@ -533,10 +532,6 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
           class: classLabel(defaultClass),
         })
       : null
-  const openEmissionPicker = () => {
-    emissionTrigger.current?.scrollIntoView({ behavior: "smooth", block: "center" })
-    setEmissionOpen(true)
-  }
 
   // plates must be ≥3 chars with a country (helpers/vehicle.js#checkCars) and
   // pass that country's format rules; the server re-validates either way
@@ -948,7 +943,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                   </div>
 
                     {emissionPriced && (
-                      <div className="mt-4">
+                      <div className="mt-3">
                         <p className="mb-1.5 px-1 text-xs font-extrabold tracking-wider text-navy uppercase">
                           {t("emission.label")}
                         </p>
@@ -956,10 +951,9 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                           value={activeNorm}
                           onChange={setEmissionNorm}
                           price={periodPrice}
-                          fmt={fmt}
+                          plate={plate.trim().toUpperCase()}
                           open={emissionOpen}
                           onOpenChange={setEmissionOpen}
-                          triggerRef={emissionTrigger}
                         />
                       </div>
                     )}
@@ -1033,7 +1027,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                   <EmissionSavingsBanner
                     percent={emissionSavings}
                     classLabel={classLabel(defaultClass)}
-                    onAdd={openEmissionPicker}
+                    onAdd={() => setEmissionOpen(true)}
                   />
                 )}
                 {periodClassPriced && shownClass && (
@@ -1314,7 +1308,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                           value={activeNorm}
                           onChange={setEmissionNorm}
                           price={periodPrice}
-                          fmt={fmt}
+                          plate={plate}
                           hint={emissionHint}
                         />
                       </div>

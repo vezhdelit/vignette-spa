@@ -18,6 +18,24 @@ function Drawer({
   )
 }
 
+/**
+ * A drawer opened from inside another one (the emission-class sheet over the
+ * order sheet). vaul stacks it, scaling the parent back, and keeps the
+ * parent open when this one closes. Must render inside the parent's tree.
+ */
+function DrawerNested({
+  repositionInputs = false,
+  ...props
+}: React.ComponentProps<typeof DrawerPrimitive.NestedRoot>) {
+  return (
+    <DrawerPrimitive.NestedRoot
+      data-slot="drawer"
+      repositionInputs={repositionInputs}
+      {...props}
+    />
+  )
+}
+
 function DrawerTrigger({
   ...props
 }: React.ComponentProps<typeof DrawerPrimitive.Trigger>) {
@@ -129,6 +147,7 @@ function DrawerDescription({
 
 export {
   Drawer,
+  DrawerNested,
   DrawerPortal,
   DrawerOverlay,
   DrawerTrigger,

@@ -209,6 +209,19 @@ export const en = {
     "Charged in euro: {amount} — promo {code} took off {discount}. The {currency} amount is an estimate — your bank sets the final rate.",
   "order.promoOff": "Promo {code}: −{discount} off {subtotal}",
 
+  /* ------------------------------------------------------- emission class */
+  "emission.label": "Emission class",
+  "emission.select": "Select emission class",
+  "emission.electric": "Electric",
+  "emission.euro": "Euro {norm}",
+  "emission.saveTitle": "Save up to {percent}%",
+  "emission.saveText": "We currently price at {class}. Add your emission class to pay less.",
+  "emission.addClass": "Add class",
+  "emission.pricesFor": "Prices for",
+  "emission.priceFor": "Price for {class}",
+  "emission.hint":
+    "{country} prices by emission class. Without it we charge the {class} price.",
+
   /* ----------------------------------------------------------- promo code */
   "promo.label": "Promo code",
   "promo.placeholder": "Promo code",

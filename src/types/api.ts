@@ -413,6 +413,12 @@ export interface CreateOrderCar {
   plate: string
   country: string
   vin_code?: string
+  /**
+   * The single Euro norm from the registration certificate ("euro4",
+   * "electric"), for a product priced by emission class. Omitted: the
+   * period's default class. Every car of one order must share a class.
+   */
+  emission_class?: string
 }
 
 export interface CreateOrderProduct {
@@ -529,7 +535,19 @@ export interface ProductPeriodPrice {
   partner_fee: number
   currency: string
   restrictions?: string[]
+  /**
+   * Priced by the vehicle's emission class (Romania, vignette.id
+   * docs/emission-classes). Present only when true. The period's own price
+   * is then `default_emission_class`'s, which is what an order naming no
+   * class pays; `emission_classes` holds a whole quote per class on sale.
+   */
+  emission_class_supported?: true
+  default_emission_class?: EmissionClass
+  emission_classes?: Partial<Record<EmissionClass, ProductPeriodPrice>>
 }
+
+/** The price groups of an emission-class-priced period. */
+export type EmissionClass = "electric" | "euro6" | "euro5_4" | "euro3_0"
 
 export interface ProductRestrictions {
   height?: string
@@ -625,7 +643,7 @@ export interface PromoValidateBody {
   /** null asks for the best auto-apply campaign instead of a typed code */
   code: string | null
   /** may be empty for a price-only preview before the plate is typed */
-  cars: { plate: string; country: string }[]
+  cars: { plate: string; country: string; emission_class?: string }[]
   products: PromoValidateProduct[]
   /** guests / anonymous installs: what per-user limits key on */
   email?: string

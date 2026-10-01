@@ -30,6 +30,10 @@ import {
 import { Spinner } from "@/components/ui/spinner"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { DoneScreen, PaymentModal } from "@/components/order/PaymentDrawer"
+import {
+  EmissionClassPicker,
+  EmissionSavingsBanner,
+} from "@/components/order/EmissionClassPicker"
 import { PromoCodeInput } from "@/components/order/PromoCodeInput"
 import { VehicleLookupRow } from "@/components/order/VehicleLookup"
 import { notePurchaseCompleted } from "@/stores/rating"
@@ -57,6 +61,16 @@ import { useT, type MessageKey } from "@/i18n"
 import { ApiRequestError, apiErrorMessage } from "@/lib/api"
 import { plateErrorText, plateHintText } from "@/lib/plate-rules"
 import { isValidVin } from "@/lib/vehicle"
+import {
+  anyClassPriced,
+  classQuote,
+  classSavings,
+  emissionLabels,
+  isClassPriced,
+  isNormSold,
+  pricedClass,
+  type EmissionNorm,
+} from "@/lib/emission"
 import { getInstallationId } from "@/lib/webpush"
 import { useAuthStore } from "@/stores/auth"
 import { clearPendingInviteCode, getPendingInviteCode } from "@/stores/invite"
@@ -169,6 +183,13 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
     passport_number: "",
     passport_country: "ua",
   })
+  // The Euro norm picked for a product priced by emission class (lib/
+  // emission.ts); null = none, which the server prices as the period's
+  // default class. `emissionOpen` lets the savings banner open the picker.
+  // What is priced and sent is `activeNorm` (below), not this.
+  const [emissionNorm, setEmissionNorm] = useState<EmissionNorm | null>(null)
+  const [emissionOpen, setEmissionOpen] = useState(false)
+  const emissionTrigger = useRef<HTMLButtonElement>(null)
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null)
   // the server's own verdict on the plate (POST /public/vehicles/validate),
   // asked once when leaving step 1 — distinct from the local rules check
@@ -198,6 +219,12 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   const plateAttempts = useRef(0)
   // just the id — POST returns a slim stub; the poll fetches the full order
   const [createdOrder, setCreatedOrder] = useState<{ id: string } | null>(null)
+
+  // The period as listed. The pick only applies while this period sells it;
+  // otherwise the order is the default class, rather than one the server
+  // would refuse — and the pick comes back with a period that does.
+  const periodPrice = product && period ? product.price[period] : null
+  const activeNorm = isNormSold(periodPrice, emissionNorm) ? emissionNorm : null
 
   // popularity order (matches the app), skipping periods flagged "disabled".
   // Tunnels sell journeys ("1j", "2j") and sometimes a year: the return
@@ -244,6 +271,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
       setAppliedCode(null)
       setPromo(null)
       setPromoError(null)
+      setEmissionNorm(null)
       // Flex is trip protection for a vignette; a tunnel pass has nothing
       // for it to protect, so it never rides on one.
       setFlexEnabled(product.type !== "tunnel")
@@ -292,7 +320,18 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
     return {
       code: null,
       cars:
-        typedPlate.length >= 3 ? [{ plate: typedPlate, country: plateCountry }] : [],
+        typedPlate.length >= 3
+          ? [
+              {
+                plate: typedPlate,
+                country: plateCountry,
+                // priced for the class, like the order it previews
+                ...(activeNorm && anyClassPriced(product.price)
+                  ? { emission_class: activeNorm }
+                  : {}),
+              },
+            ]
+          : [],
       products: [
         {
           name: product.name,
@@ -304,7 +343,17 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
       ],
       ...(/.+@.+\..+/.test(typedEmail) ? { email: typedEmail } : {}),
     }
-  }, [product, period, plate, plateCountry, startDate, flexType, flexEnabled, email])
+  }, [
+    product,
+    period,
+    plate,
+    plateCountry,
+    activeNorm,
+    startDate,
+    flexType,
+    flexEnabled,
+    email,
+  ])
 
   // What the server would apply on its own (no code). Only asked on the
   // confirm step, and cached per order shape — the endpoint is rate-limited.
@@ -395,7 +444,9 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
     }
   }, [appliedCode, promoInput])
 
-  const selectedPrice = product && period ? product.price[period] : null
+  // the period as the emission class pays it (a whole quote, restrictions
+  // included — the same as the period's own)
+  const selectedPrice = periodPrice ? classQuote(periodPrice, activeNorm) : null
   const vinRequired =
     selectedPrice?.restrictions?.includes("vin_code_required") ?? false
 
@@ -430,9 +481,10 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
     : 0
   // what the payment provider actually takes — orders are always settled in
   // EUR; null while EUR is the display currency or the EUR catalog is missing
-  const eurPrice = period
+  const eurPeriodPrice = period
     ? eurCatalog.products.find((p) => p.name === product.name)?.price[period]
     : undefined
+  const eurPrice = eurPeriodPrice ? classQuote(eurPeriodPrice, activeNorm) : undefined
   const eurFlexPrice =
     eurCatalog.flexOptions.find((f) => f.type === flexOption?.type)?.price ?? 0
   const eurTotal =
@@ -463,6 +515,28 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   const plateHint = plateRules ? plateHintText(plateRules, plateCountry, plateVerdict) : null
   // the typed code once it priced, else the campaign the server would apply
   const activePromo = promo ?? autoPromo
+
+  // Emission class (Romania). The picker shows for any product with a
+  // class-priced period; prices, the banner and the "Prices for" label only
+  // while the selected period's price depends on it.
+  const emissionPriced = anyClassPriced(product.price)
+  const periodClassPriced = isClassPriced(periodPrice)
+  const { classLabel } = emissionLabels(t)
+  const shownClass = pricedClass(periodPrice, activeNorm)
+  const defaultClass = periodPrice?.default_emission_class
+  const emissionSavings =
+    periodPrice && periodClassPriced && !activeNorm ? classSavings(periodPrice) : 0
+  const emissionHint =
+    !activeNorm && periodClassPriced && defaultClass
+      ? t("emission.hint", {
+          country: countryLabel(product.country),
+          class: classLabel(defaultClass),
+        })
+      : null
+  const openEmissionPicker = () => {
+    emissionTrigger.current?.scrollIntoView({ behavior: "smooth", block: "center" })
+    setEmissionOpen(true)
+  }
 
   // plates must be ≥3 chars with a country (helpers/vehicle.js#checkCars) and
   // pass that country's format rules; the server re-validates either way
@@ -581,6 +655,9 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
               plate: plate.trim().toUpperCase().replace(/\s+/g, ""),
               country: plateCountry,
               ...(vin.trim() ? { vin_code: vin.trim().toUpperCase() } : {}),
+              // only for a product priced by class: elsewhere the server
+              // would store it on the car untouched
+              ...(activeNorm && emissionPriced ? { emission_class: activeNorm } : {}),
             },
           ],
           products: [
@@ -795,9 +872,10 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                     </p>
                   )}
 
-                {/* plate + vin */}
+                {/* plate + vin (+ emission class) */}
                 <Card className="mt-3 rounded-[24px] ring-0">
-                  <CardContent className="flex items-center gap-2.5">
+                  <CardContent>
+                  <div className="flex items-center gap-2.5">
                     <Select
                       value={plateCountry}
                       onValueChange={(next) => {
@@ -867,6 +945,24 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                           </Button>
                         ))}
                     </div>
+                  </div>
+
+                    {emissionPriced && (
+                      <div className="mt-4">
+                        <p className="mb-1.5 px-1 text-xs font-extrabold tracking-wider text-navy uppercase">
+                          {t("emission.label")}
+                        </p>
+                        <EmissionClassPicker
+                          value={activeNorm}
+                          onChange={setEmissionNorm}
+                          price={periodPrice}
+                          fmt={fmt}
+                          open={emissionOpen}
+                          onOpenChange={setEmissionOpen}
+                          triggerRef={emissionTrigger}
+                        />
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -931,8 +1027,28 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                   </ScrollArea>
                 )}
 
+                {/* no class picked: what one saves, and which class the
+                    prices below are for */}
+                {emissionSavings > 0 && defaultClass && (
+                  <EmissionSavingsBanner
+                    percent={emissionSavings}
+                    classLabel={classLabel(defaultClass)}
+                    onAdd={openEmissionPicker}
+                  />
+                )}
+                {periodClassPriced && shownClass && (
+                  <p className="mt-3 flex items-center gap-2 px-1 text-[13px] font-bold text-white">
+                    {t("emission.pricesFor")}
+                    <span className="rounded-md bg-white/25 px-2 py-0.5">
+                      {classLabel(shownClass)}
+                    </span>
+                  </p>
+                )}
+
                 {/* period picker */}
-                <ScrollArea className="-mx-4 mt-3">
+                <ScrollArea
+                  className={cn("-mx-4", periodClassPriced && shownClass ? "mt-1.5" : "mt-3")}
+                >
                   <ToggleGroup
                     type="single"
                     value={period ?? ""}
@@ -958,7 +1074,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                             )}
                           </span>
                           <span className="text-lg font-extrabold text-navy">
-                            {fmt(product.price[p].total_price)}
+                            {fmt(classQuote(product.price[p], emissionNorm).total_price)}
                           </span>
                         </ToggleGroupItem>
                       )
@@ -1188,6 +1304,21 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                     <p className="mt-3 text-[15px] font-semibold text-navy">
                       {t("order.plateNote")}
                     </p>
+
+                    {emissionPriced && (
+                      <div className="mt-3">
+                        <p className="mb-1.5 px-1 text-[15px] font-bold text-navy">
+                          {t("emission.label")}
+                        </p>
+                        <EmissionClassPicker
+                          value={activeNorm}
+                          onChange={setEmissionNorm}
+                          price={periodPrice}
+                          fmt={fmt}
+                          hint={emissionHint}
+                        />
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -1206,6 +1337,11 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                         {periodLabel(period!)} · {formatDayMonth(startDate)} —{" "}
                         {formatDayMonth(endDate)}
                       </span>
+                      {periodClassPriced && shownClass && (
+                        <span className="block truncate text-xs font-semibold text-navy-soft">
+                          {t("emission.priceFor", { class: classLabel(shownClass) })}
+                        </span>
+                      )}
                     </span>
                     <span className="shrink-0 text-[17px] font-extrabold whitespace-nowrap text-navy">
                       {selectedPrice ? fmt(selectedPrice.total_price) : "—"}

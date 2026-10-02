@@ -16,10 +16,11 @@ export interface PushFocus {
   /** the order's public id (`data.order_id`), when the push named one */
   orderId: string | null
   /**
-   * `data.screen`: vignette · order · checkout · balance · referrals · buy
-   * · home, plus (2026-09-29) support · account · inbox. The first five
-   * only arrive on catalogue pushes; the admin composer offers the app's
-   * own navigation — home · buy · support · account · inbox.
+   * `data.screen`: order · checkout · balance · referrals on catalogue
+   * pushes; home · buy · support · account · inbox from the admin
+   * composer. `vignette` was retired on 2026-10-02 (merged into `order`)
+   * but old inbox rows still carry it — it falls through to the order card
+   * like `order` does, so nothing here special-cases either.
    */
   screen: string | null
 }

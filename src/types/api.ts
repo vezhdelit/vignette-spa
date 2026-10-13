@@ -99,7 +99,7 @@ export interface DeletionPreview {
      * Stays valid like an active one. Absent from an older API.
      */
     upcoming?: number
-    /** created, never paid — abandoned by the deletion */
+    /** checkouts in progress (never paid, started in the last 30 min) — abandoned by the deletion */
     pending: number
     total: number
   }

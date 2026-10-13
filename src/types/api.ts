@@ -92,8 +92,13 @@ export interface DeletionPreview {
   email: string | null
   guest: boolean
   orders: {
-    /** paid, still valid today */
+    /** issued and valid today (the same rule as the Active filter) */
     active: number
+    /**
+     * paid but not active yet — being issued, deferred or starting later.
+     * Stays valid like an active one. Absent from an older API.
+     */
+    upcoming?: number
     /** created, never paid — abandoned by the deletion */
     pending: number
     total: number

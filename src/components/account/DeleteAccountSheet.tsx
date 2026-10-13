@@ -96,6 +96,7 @@ function DeleteAccountSheet({ open, onClose }: { open: boolean; onClose: () => v
     if (!data) return
     trackCustom("account.deletion_requested", {
       active_orders: data.orders.active,
+      upcoming_orders: data.orders.upcoming ?? 0,
       pending_orders: data.orders.pending,
       forfeited_cents: forfeit ? data.wallet.total : 0,
       has_reason: reason.trim().length > 0,
@@ -151,6 +152,11 @@ function DeleteAccountSheet({ open, onClose }: { open: boolean; onClose: () => v
                 <ul className="mt-1.5 space-y-1.5 text-[14px] font-semibold text-white">
                   {data.orders.active > 0 && (
                     <li>{t("account.delete.keepsVignettes", { count: data.orders.active })}</li>
+                  )}
+                  {(data.orders.upcoming ?? 0) > 0 && (
+                    <li>
+                      {t("account.delete.keepsUpcoming", { count: data.orders.upcoming ?? 0 })}
+                    </li>
                   )}
                   <li>{t("account.delete.keepsRecords")}</li>
                   {data.orders.pending > 0 && (

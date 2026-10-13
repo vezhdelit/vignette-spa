@@ -329,6 +329,12 @@
     "many": "{count} aktywnych winiet pozostaje ważnych — należą do tablicy rejestracyjnej, nie do konta",
     "other": "{count} aktywnej winiety pozostaje ważne — należą do tablicy rejestracyjnej, nie do konta"
   },
+  "account.delete.keepsUpcoming": {
+    "one": "{count} opłacona winieta, która jeszcze nie obowiązuje, i tak zostanie wydana i pozostanie ważna",
+    "few": "{count} opłacone winiety, które jeszcze nie obowiązują, i tak zostaną wydane i pozostaną ważne",
+    "many": "{count} opłaconych winiet, które jeszcze nie obowiązują, i tak zostanie wydanych i pozostanie ważnych",
+    "other": "{count} opłaconej winiety, które jeszcze nie obowiązują, i tak zostaną wydane i pozostaną ważne"
+  },
   "account.delete.keepsRecords": "Zamówienia i faktury są przechowywane bez Twoich danych osobowych, zgodnie z wymogami prawa",
   "account.delete.pending": {
     "one": "{count} nieopłacone zamówienie zostanie porzucone",

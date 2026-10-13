@@ -317,6 +317,10 @@
     "one": "{count} aktive Vignette bleibt gültig — sie gehört zum Kennzeichen, nicht zum Konto",
     "other": "{count} aktive Vignetten bleiben gültig — sie gehören zum Kennzeichen, nicht zum Konto"
   },
+  "account.delete.keepsUpcoming": {
+    "one": "{count} bezahlte Vignette, die noch nicht gilt, wird trotzdem ausgestellt und bleibt gültig",
+    "other": "{count} bezahlte Vignetten, die noch nicht gelten, werden trotzdem ausgestellt und bleiben gültig"
+  },
   "account.delete.keepsRecords": "Bestellungen und Rechnungen werden ohne deine persönlichen Daten aufbewahrt, wie es das Gesetz verlangt",
   "account.delete.pending": {
     "one": "{count} unbezahlte Bestellung wird verworfen",

@@ -452,6 +452,10 @@ export const en = {
     one: "{count} active vignette stays valid — it belongs to the plate, not the account",
     other: "{count} active vignettes stay valid — they belong to the plate, not the account",
   },
+  "account.delete.keepsUpcoming": {
+    one: "{count} paid vignette that isn't active yet will still be issued and stays valid",
+    other: "{count} paid vignettes that aren't active yet will still be issued and stay valid",
+  },
   "account.delete.keepsRecords":
     "Orders and invoices are kept without your personal data, as the law requires",
   "account.delete.pending": {

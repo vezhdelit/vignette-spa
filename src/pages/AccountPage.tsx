@@ -44,6 +44,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { PlateBadge } from "@/components/order/PlateBadge"
 import { NotificationsList } from "@/components/notifications/NotificationsList"
+import { DeleteAccountRow } from "@/components/account/DeleteAccountSheet"
 import { apiErrorMessage, ApiRequestError } from "@/lib/api"
 import { formatDate } from "@/lib/format"
 import {
@@ -138,6 +139,9 @@ export function AccountPage() {
       <RateAppRow hasRated={me?.has_rated ?? false} />
 
       {!isGuest && <SignOutButtons />}
+      {/* App Store 5.1.1(v) / Google Play: deletion must be reachable from
+          inside the app. Last, under sign-out — a door, not a feature. */}
+      {!isGuest && <DeleteAccountRow />}
       <p className="pt-1 text-center text-xs font-medium text-white/60">
         {t("account.userId", { id: user?.id ?? "—" })}
       </p>
@@ -183,11 +187,14 @@ function SignInCard() {
       provider,
       token,
       nonce,
+      authorizationCode,
     }: {
       provider: "apple" | "google"
       token: string
       nonce: string
-    }) => verifySocial(provider, token, nonce),
+      /** Apple only — see stores/auth.ts#verifySocial */
+      authorizationCode?: string | null
+    }) => verifySocial(provider, token, nonce, { authorizationCode }),
   })
   const linkEmail = useMutation({ mutationFn: linkSocialEmail })
   const busy =
@@ -211,9 +218,14 @@ function SignInCard() {
   }, [resendIn])
 
   const finishSocial = useCallback(
-    async (provider: "apple" | "google", token: string, nonce: string) => {
+    async (
+      provider: "apple" | "google",
+      token: string,
+      nonce: string,
+      authorizationCode: string | null = null
+    ) => {
       try {
-        const result = await verifySocialAsync({ provider, token, nonce })
+        const result = await verifySocialAsync({ provider, token, nonce, authorizationCode })
         if (result.status === "email_required") {
           // provider disclosed no usable email — collect one via OTP
           setMode({ kind: "link-email", provider, linkToken: result.linkToken })
@@ -281,12 +293,12 @@ function SignInCard() {
     // NO await before signInWithApple() — see lib/social.ts
     const nonce = appleNonce.current
     signInWithApple()
-      .then((identityToken) => {
+      .then(({ identityToken, authorizationCode }) => {
         if (!identityToken || !nonce) {
           toast.error(t("account.signIn.appleNoToken"))
           return
         }
-        return finishSocial("apple", identityToken, nonce)
+        return finishSocial("apple", identityToken, nonce, authorizationCode)
       })
       .catch((e) => {
         if (!isAppleCancel(e)) toast.error(apiErrorMessage(e))

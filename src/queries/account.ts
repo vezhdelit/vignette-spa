@@ -9,9 +9,12 @@ import {
 } from "@tanstack/react-query"
 import { api, apiResult } from "@/lib/api"
 import { useSessionScope } from "@/queries/session"
+import { useAuthStore } from "@/stores/auth"
 import type {
   AppNotification,
   Consent,
+  DeletionPreview,
+  DeletionResult,
   NotificationsSummary,
   SessionInfo,
   Vehicle,
@@ -37,6 +40,7 @@ export const accountKeys = {
     ["account", scope, "notifications", "summary"] as const,
   sessions: (scope: string) => ["account", scope, "sessions"] as const,
   consents: (scope: string) => ["account", scope, "consents"] as const,
+  deletionPreview: (scope: string) => ["account", scope, "deletion"] as const,
 }
 
 // The wallet moved to queries/wallet.ts and referrals to queries/referrals.ts
@@ -261,5 +265,57 @@ export function useRevokeConsent() {
     mutationFn: () => api("/public/me/consents", { method: "DELETE" }),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: accountKeys.consents(scope) }),
+  })
+}
+
+/* ------------------------------------------------------- account deletion */
+
+/**
+ * GET /public/me/deletion — fetched only while the confirmation sheet is
+ * open, and never kept: the numbers (a vignette expiring, a top-up landing)
+ * must be the ones of the moment the person confirms.
+ */
+export function useDeletionPreview(enabled: boolean) {
+  const { scope, ready } = useSessionScope()
+  return useQuery({
+    queryKey: accountKeys.deletionPreview(scope),
+    queryFn: () => apiResult<DeletionPreview>("/public/me/deletion"),
+    enabled: ready && enabled,
+    staleTime: 0,
+    gcTime: 0,
+  })
+}
+
+/**
+ * DELETE /public/me. The account is anonymised server-side — orders and
+ * invoices stay as records without the person, vignettes stay valid on
+ * their plates — and every session of it is revoked, this one included. So
+ * on success the cache is dropped whole (nothing in it belongs to anyone
+ * any more) and the app falls back to a fresh guest session, exactly like
+ * sign-out. 409 wallet_balance_forfeit means the sheet must show the wallet
+ * and resend with `acknowledgeForfeit`; the sheet handles that.
+ */
+export function useDeleteAccount() {
+  const queryClient = useQueryClient()
+  const afterAccountDeleted = useAuthStore((s) => s.afterAccountDeleted)
+  return useMutation({
+    mutationFn: ({
+      reason,
+      acknowledgeForfeit,
+    }: {
+      reason: string
+      acknowledgeForfeit: boolean
+    }) =>
+      apiResult<DeletionResult>("/public/me", {
+        method: "DELETE",
+        body: {
+          reason: reason.trim() || undefined,
+          acknowledge_forfeit: acknowledgeForfeit,
+        },
+      }),
+    onSuccess: async () => {
+      queryClient.clear()
+      await afterAccountDeleted()
+    },
   })
 }

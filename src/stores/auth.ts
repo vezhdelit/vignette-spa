@@ -41,7 +41,17 @@ interface AuthState {
   verifySocial: (
     provider: "apple" | "google",
     token: string,
-    nonce: string
+    nonce: string,
+    extra?: {
+      /**
+       * Apple only: the one-time authorization code from the same sign-in
+       * response as the identity token. The server exchanges it for the
+       * refresh token it must revoke when the account is deleted (Apple's
+       * rule for apps offering Sign in with Apple). Optional — a sign-in
+       * without it still works, it just leaves nothing to revoke.
+       */
+      authorizationCode?: string | null
+    }
   ) => Promise<SocialVerifyResult>
   /** completes a 202 email_required: link_token + the OTP challenge result */
   linkSocialEmail: (args: {
@@ -51,6 +61,12 @@ interface AuthState {
   }) => Promise<void>
   logout: () => Promise<void>
   logoutAll: () => Promise<void>
+  /**
+   * DELETE /public/me succeeded: the server revoked every session of the
+   * account, this one included, so there is nothing to log out of — just
+   * drop the tokens and continue as a fresh guest, like the mobile app.
+   */
+  afterAccountDeleted: () => Promise<void>
 }
 
 function toStoredTokens(payload: TokenPayload): StoredTokens {
@@ -137,7 +153,7 @@ export const useAuthStore = create<AuthState>()(
         return result.nonce
       },
 
-      async verifySocial(provider, token, nonce) {
+      async verifySocial(provider, token, nonce, extra) {
         const shared = {
           nonce,
           device_name: deviceName(),
@@ -145,7 +161,11 @@ export const useAuthStore = create<AuthState>()(
         }
         const body =
           provider === "apple"
-            ? { identity_token: token, ...shared }
+            ? {
+                identity_token: token,
+                authorization_code: extra?.authorizationCode ?? undefined,
+                ...shared,
+              }
             : { id_token: token, ...shared }
 
         const result = await apiResult<TokenPayload | EmailRequiredResult>(
@@ -220,6 +240,15 @@ export const useAuthStore = create<AuthState>()(
           } catch {
             /* offline */
           }
+        }
+      },
+
+      async afterAccountDeleted() {
+        set({ tokens: null, user: null })
+        try {
+          await get().continueAsGuest()
+        } catch {
+          /* offline, or the guest limit — retried before the next call */
         }
       },
     }),

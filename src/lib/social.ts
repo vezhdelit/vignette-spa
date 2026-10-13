@@ -126,12 +126,23 @@ export async function initAppleSignIn(nonce: string): Promise<void> {
   })
 }
 
+export interface AppleSignInResult {
+  /** null if Apple returned none — the sign-in cannot proceed */
+  identityToken: string | null
+  /**
+   * The one-time authorization code from the same response. Sent along as
+   * `authorization_code` so the server can obtain (and, on account
+   * deletion, revoke) Apple's refresh token. Expires in five minutes.
+   */
+  authorizationCode: string | null
+}
+
 /**
  * MUST be the first statement of the click handler — nothing awaited before
- * it. Resolves with the identity_token, or null if Apple returned none.
+ * it. Resolves with the identity_token and authorization code.
  * Rejects with { error: "popup_closed_by_user" } on cancel.
  */
-export function signInWithApple(): Promise<string | null> {
+export function signInWithApple(): Promise<AppleSignInResult> {
   if (!window.AppleID?.auth) {
     return Promise.reject(
       new Error(t("account.signIn.appleLoading"))
@@ -140,8 +151,10 @@ export function signInWithApple(): Promise<string | null> {
   return window.AppleID.auth
     .signIn()
     .then(
-      (response: { authorization?: { id_token?: string } }) =>
-        response?.authorization?.id_token || null
+      (response: { authorization?: { id_token?: string; code?: string } }) => ({
+        identityToken: response?.authorization?.id_token || null,
+        authorizationCode: response?.authorization?.code || null,
+      })
     )
 }
 

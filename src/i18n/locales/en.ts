@@ -441,6 +441,34 @@ export const en = {
   "account.rate.subtitle": "Tell us how we're doing",
   "account.rate.subtitleRated": "Thanks for rating — change your mind any time",
 
+  /* ------------------------------------------------------ delete account */
+  "account.delete.title": "Delete account",
+  "account.delete.subtitle": "Remove your personal data from Vignette ID",
+  "account.delete.sheetTitle": "Delete your account?",
+  "account.delete.sheetBody":
+    "You will be signed out everywhere, and your email, name, saved cards and sign-ins will be removed. This cannot be undone.",
+  "account.delete.keepsTitle": "What stays",
+  "account.delete.keepsVignettes": {
+    one: "{count} active vignette stays valid — it belongs to the plate, not the account",
+    other: "{count} active vignettes stay valid — they belong to the plate, not the account",
+  },
+  "account.delete.keepsRecords":
+    "Orders and invoices are kept without your personal data, as the law requires",
+  "account.delete.pending": {
+    one: "{count} unpaid order will be abandoned",
+    other: "{count} unpaid orders will be abandoned",
+  },
+  "account.delete.walletTitle": "Your wallet is not empty",
+  "account.delete.walletBody":
+    "{amount} of balance and bonuses will be lost. Spend it on a vignette first if you want to keep it.",
+  "account.delete.walletAck": "I understand that {amount} will be lost",
+  "account.delete.walletChanged": "Your wallet balance changed — please confirm again",
+  "account.delete.reasonPlaceholder": "Why are you leaving? (optional)",
+  "account.delete.confirm": "Delete my account",
+  "account.delete.deleting": "Deleting…",
+  "account.delete.done": "Your account has been deleted",
+  "account.delete.again": "You can sign up again any time with the same email — it starts fresh.",
+
   /* ---------------------------------------------------------- rate sheet */
   "rate.title": "How do you like vignette.id?",
   "rate.subtitle": "Tap the stars. A word or two on what to improve is welcome.",

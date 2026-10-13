@@ -83,6 +83,43 @@ export interface Me {
   rate_prompt: RatePrompt
 }
 
+/**
+ * GET /public/me/deletion — what the confirmation screen says before
+ * DELETE /public/me. Vignettes stay valid either way (they belong to the
+ * plate); the wallet is what deletion forfeits. Amounts are INTEGER CENTS.
+ */
+export interface DeletionPreview {
+  email: string | null
+  guest: boolean
+  orders: {
+    /** paid, still valid today */
+    active: number
+    /** created, never paid — abandoned by the deletion */
+    pending: number
+    total: number
+  }
+  wallet: {
+    balance: number
+    bonuses: number
+    cashback: number
+    total: number
+    currency: string
+  }
+  /**
+   * true when deleting loses money: show `wallet`, make the person tick
+   * something, and send `acknowledge_forfeit: true` — the DELETE answers
+   * 409 wallet_balance_forfeit without it.
+   */
+  requires_forfeit_acknowledgement: boolean
+}
+
+/** DELETE /public/me — immediate and final; every session of the account is gone. */
+export interface DeletionResult {
+  status: "deleted"
+  /** unix seconds */
+  deleted_at: number
+}
+
 /** POST /public/me/rating and /rating/dismissed both answer the fresh flags. */
 export interface RatingState {
   has_rated: boolean

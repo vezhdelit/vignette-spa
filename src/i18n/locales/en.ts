@@ -94,6 +94,7 @@ export const en = {
   "orderCard.promo.cashbackGranted": "cashback credited to your wallet",
   "orderCard.promo.cashbackReversed": "cashback reversed after the refund",
   "orderCard.promoFallback": "Promo",
+  "orderCard.company": "Invoiced to",
 
   /* ------------------------------------------------- modify / transfer / refund */
   "modify.title": "Change vignette data",
@@ -204,6 +205,33 @@ export const en = {
   "order.pay": "Pay",
   "order.acceptTerms": "Please accept the terms and conditions",
   "order.createFailed": "Could not create the order",
+  "order.plateType.question": "Is this a special plate?",
+  "order.plateType.label": "Type of plate",
+  "order.plateType.select": "Select the type of plate",
+  "order.plateType.standard": "Standard plate",
+  "order.plateType.diplomatic": "Diplomatic",
+  "order.plateType.temporary": "Temporary",
+  "order.plateType.export": "Export",
+  "order.plateType.transfer": "Transfer",
+  "order.plateType.government": "Government",
+  "order.plateType.historic": "Historic",
+  "order.plateType.custom": "Personal (custom)",
+  "order.plateType.other": "Other",
+  "order.plateType.unsureHint":
+    "If you are unsure what type of plate you have, please contact us.",
+  "order.plateType.reviewNote":
+    "A special plate is checked by our team before the vignette is issued — the order stays pending until then.",
+  "order.company.toggle": "Invoice for a company",
+  "order.company.note": "The invoice is issued to the company instead of your email.",
+  "order.company.name": "Company name",
+  "order.company.taxId": "VAT ID",
+  "order.company.address": "Address",
+  "order.company.city": "City",
+  "order.company.zip": "Postal code",
+  "order.company.country": "Country",
+  "order.company.warning":
+    "Please check the filled data carefully. Once an invoice is issued, the data cannot be changed.",
+  "order.company.incomplete": "Fill in every company field to continue.",
   "order.creating": "Creating your order…",
   "order.chargedInEuro":
     "Charged in euro: {amount}. The {currency} amount is an estimate — your bank sets the final rate.",

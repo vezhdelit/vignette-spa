@@ -36,6 +36,14 @@ import {
 } from "@/components/order/EmissionClassPicker"
 import { PromoCodeInput } from "@/components/order/PromoCodeInput"
 import { VehicleLookupRow } from "@/components/order/VehicleLookup"
+import { PlateTypeSelect, PLATE_TYPE_KEYS } from "@/components/order/PlateTypeSelect"
+import {
+  CompanyInvoiceForm,
+  companyComplete,
+  companyPayload,
+  EMPTY_COMPANY,
+  type CompanyDraft,
+} from "@/components/order/CompanyInvoiceForm"
 import { notePurchaseCompleted } from "@/stores/rating"
 import { productBadge, tileColor } from "@/components/vignettes/ProductCard"
 import {
@@ -83,7 +91,7 @@ import {
   type Catalog,
 } from "@/queries/catalog"
 import { useMe } from "@/queries/me"
-import { useVehicles } from "@/queries/account"
+import { useCompanies, useVehicles } from "@/queries/account"
 import {
   useCreateOrder,
   useInvalidateOrders,
@@ -103,7 +111,7 @@ import {
   useValidateVehicles,
 } from "@/queries/vehicles"
 import { cn } from "@/lib/utils"
-import type { CatalogProduct, PromoValidateResult } from "@/types/api"
+import type { CatalogProduct, PlateType, PromoValidateResult } from "@/types/api"
 
 /** The API sends restriction keys, not labels — same set as the product card. */
 const RESTRICTION_KEYS: Record<string, MessageKey> = {
@@ -148,6 +156,9 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   // saved plates for one-tap fill — guest ok: a guest gets the plates from
   // the orders this session placed earlier (GET /me/vehicles)
   const savedVehicles = useVehicles().data ?? []
+  // the billing companies this account invoiced through before, for the
+  // "invoice for a company" chips — guest ok, its own orders only
+  const savedCompanies = useCompanies().data ?? []
   const currency = useSettingsStore((s) => s.currency)
   const { flexOptions, countries } = useCatalog().data ?? EMPTY_CATALOG
   // The EUR twin of the catalog (the same query while EUR is selected): the
@@ -168,6 +179,18 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   const [step, setStep] = useState<Step>("order")
   const [plate, setPlate] = useState("")
   const [plateCountry, setPlateCountry] = useState("ua")
+  // A special plate (diplomatic, temporary, …) — offered once the country's
+  // format rules reject what was typed. Sent as `cars[].type`: the server
+  // skips the format rules for it and holds the paid order for an admin's
+  // check, so the local rules check and the server plate check are both
+  // skipped here too (POST /vehicles/validate knows no type).
+  const [plateType, setPlateType] = useState<PlateType | null>(null)
+  // "Invoice for a company": the six billing fields the invoice PDF prints,
+  // sent as `company` when the box is ticked and every field is filled
+  const [companyEnabled, setCompanyEnabled] = useState(false)
+  const [companyDraft, setCompanyDraft] = useState<CompanyDraft>(EMPTY_COMPANY)
+  // the server's `invalid_company` message, shown under the form
+  const [companyError, setCompanyError] = useState<string | null>(null)
   const [vin, setVin] = useState("")
   const [vinOpen, setVinOpen] = useState(false)
   const [period, setPeriod] = useState<string | null>(null)
@@ -266,6 +289,10 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
       setCreatedOrder(null)
       setDuplicateWarning(null)
       setPlateError(null)
+      setPlateType(null)
+      setCompanyEnabled(false)
+      setCompanyDraft(EMPTY_COMPANY)
+      setCompanyError(null)
       setPromoCode("")
       setAppliedCode(null)
       setPromo(null)
@@ -328,6 +355,9 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                 ...(activeNorm && anyClassPriced(product.price)
                   ? { emission_class: activeNorm }
                   : {}),
+                // a special plate fails the format rules the promo check
+                // runs too; the type lifts them there as on the order
+                ...(plateType ? { type: plateType } : {}),
               },
             ]
           : [],
@@ -347,6 +377,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
     period,
     plate,
     plateCountry,
+    plateType,
     activeNorm,
     startDate,
     flexType,
@@ -503,13 +534,20 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   // .ts). Null while the manifest hasn't loaded: then there is no local
   // opinion and the server has the only say.
   const plateVerdict = checkPlateLocally(plate, plateCountry)
+  // A typed special plate is exempt from the format rules (server:
+  // plate-patterns.js#checkCars) — so no local verdict against it either.
   const localPlateError =
+    !plateType &&
     plateRules &&
     plateVerdict &&
     !plateVerdict.valid &&
     plate.trim().length >= plateRules.normalize.min_length
       ? plateErrorText(plateRules, plateVerdict, countryLabel(plateCountry))
       : null
+  // Offer the special-plate choice once the plate has been rejected (by
+  // the local rules or by the server), and keep showing it while a type is
+  // picked so it can be changed or cleared.
+  const offerPlateType = Boolean(plateType || plateError || localPlateError)
   // what right looks like for this country — shown under either error
   const plateHint = plateRules ? plateHintText(plateRules, plateCountry, plateVerdict) : null
   // the typed code once it priced, else the campaign the server would apply
@@ -537,7 +575,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   // pass that country's format rules; the server re-validates either way
   const canProceed =
     plate.trim().length >= 3 &&
-    plateVerdict?.valid !== false &&
+    (plateType !== null || plateVerdict?.valid !== false) &&
     period !== null &&
     emailValid &&
     (!vinRequired || isValidVin(vin)) &&
@@ -598,6 +636,15 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
    */
   const goToConfirm = async () => {
     setPlateError(null)
+    // A special plate has no format to check — POST /vehicles/validate
+    // knows no `type` and would reject it; order creation validates the
+    // rest (the hyphen rule still applies there).
+    if (plateType) {
+      track("checkout.vehicle_added", { country: plateCountry }, { product: product.name })
+      setPlate(plate.trim().toUpperCase().replace(/\s+/g, ""))
+      setStep("confirm")
+      return
+    }
     try {
       const result = await validateVehicles.mutateAsync([
         { plate: plate.trim(), country: plateCountry },
@@ -633,6 +680,14 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
       toast.error(t("order.acceptTerms"))
       return
     }
+    // Only a complete company goes on the order: the server refuses a
+    // half-filled one, and the invoice cannot be changed afterwards.
+    if (companyEnabled && !companyComplete(companyDraft)) {
+      toast.error(t("order.company.incomplete"))
+      return
+    }
+    const company = companyPayload(companyEnabled, companyDraft)
+    setCompanyError(null)
     setDuplicateWarning(null)
     setStep("creating")
     try {
@@ -653,8 +708,13 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
               // only for a product priced by class: elsewhere the server
               // would store it on the car untouched
               ...(activeNorm && emissionPriced ? { emission_class: activeNorm } : {}),
+              // a special plate: skips the format rules, held for an
+              // admin's check before issuance
+              ...(plateType ? { type: plateType } : {}),
             },
           ],
+          // the invoice's billing company, when asked for
+          ...(company ? { company } : {}),
           products: [
             {
               name: product.name,
@@ -770,6 +830,11 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
         setPromo(null)
         setPromoError(e.message)
         toast.error(e.message)
+      } else if (e instanceof ApiRequestError && e.type === "invalid_company") {
+        // the server's own verdict on the billing fields (`field` names the
+        // offender) — shown under the form, the order stays as typed
+        setCompanyError(e.message)
+        toast.error(e.message)
       } else {
         const message =
           e instanceof ApiRequestError ? e.message : t("order.createFailed")
@@ -876,6 +941,8 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                       onValueChange={(next) => {
                         setPlateCountry(next)
                         setPlateError(null)
+                        // a special-plate type was about the old country's series
+                        setPlateType(null)
                       }}
                     >
                       <SelectTrigger
@@ -975,11 +1042,26 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                   </div>
                 )}
 
+                {/* "Is this a special plate?" — once the format rules say no;
+                    a picked type is sent as cars[].type and lifts the rules */}
+                {offerPlateType && (
+                  <PlateTypeSelect
+                    value={plateType}
+                    onChange={(next) => {
+                      setPlateType(next)
+                      // the server's verdict was about a standard plate
+                      if (next) setPlateError(null)
+                    }}
+                    prompt={!plateType}
+                    className="mt-2"
+                  />
+                )}
+
                 {/* plate → vehicle (VIN, make, model) where a registry answers */}
                 <VehicleLookupRow
                   plate={plate}
                   country={plateCountry}
-                  ready={plateVerdict?.valid !== false}
+                  ready={plateType !== null || plateVerdict?.valid !== false}
                   tone="dark"
                   className="mt-2"
                   onVehicle={(vehicle) => {
@@ -1284,6 +1366,11 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                             {vin}
                           </div>
                         )}
+                        {plateType && (
+                          <div className="bg-pink px-3 py-2 text-center text-sm font-bold text-white">
+                            {t("order.plateType.label")}: {t(PLATE_TYPE_KEYS[plateType])}
+                          </div>
+                        )}
                       </div>
                       <Button
                         variant="brand"
@@ -1298,6 +1385,11 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                     <p className="mt-3 text-[15px] font-semibold text-navy">
                       {t("order.plateNote")}
                     </p>
+                    {plateType && (
+                      <p className="mt-2 text-[13px] font-semibold text-navy-soft">
+                        {t("order.plateType.reviewNote")}
+                      </p>
+                    )}
 
                     {emissionPriced && (
                       <div className="mt-3">
@@ -1401,6 +1493,24 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                       pending={promoChecking}
                       onApply={applyPromo}
                       onRemove={removePromo}
+                    />
+
+                    {/* "Invoice for a company": the six billing fields the
+                        invoice prints, with the account's previous companies
+                        as one-tap chips */}
+                    <CompanyInvoiceForm
+                      enabled={companyEnabled}
+                      onEnabled={(next) => {
+                        setCompanyEnabled(next)
+                        setCompanyError(null)
+                      }}
+                      draft={companyDraft}
+                      onDraft={(next) => {
+                        setCompanyDraft(next)
+                        setCompanyError(null)
+                      }}
+                      saved={savedCompanies}
+                      error={companyError}
                     />
 
                     {/* Pay from the wallet. Only offered when there is
@@ -1510,7 +1620,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                   variant="mint"
                   size="xl"
                   className="mt-3 w-full disabled:opacity-60"
-                  disabled={!terms}
+                  disabled={!terms || (companyEnabled && !companyComplete(companyDraft))}
                   onClick={() => submit()}
                 >
                   {t("order.pay")}

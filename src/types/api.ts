@@ -392,6 +392,53 @@ export interface OrderCar {
   pdf?: string | null
 }
 
+/**
+ * The billing company of an "invoice for a company" order — the six fields
+ * exactly as sent at creation (helpers/order-status.js#publicCompanyView), or
+ * null for a personal invoice. A snapshot: it never changes once issued.
+ */
+export interface OrderCompany {
+  name: string | null
+  tax_id: string | null
+  address: string | null
+  city: string | null
+  zip: string | null
+  country: string | null
+}
+
+/**
+ * GET /public/me/companies — a company the account has invoiced through, for
+ * the "invoice for a company" picker. `tax_id` is the form the customer last
+ * typed, ready to go straight back onto an order. Guests get a string id
+ * ("<country>:<tax id>") since there is no companies row behind their entries.
+ */
+export interface BillingCompany {
+  id: number | string
+  name: string | null
+  tax_id: string
+  address: string | null
+  city: string | null
+  zip: string | null
+  country: string
+  last_used_at: number | null
+}
+
+/**
+ * The plate types the website's special-plate modal offers. Any non-empty
+ * `cars[].type` makes the server skip that country's plate-format rules (the
+ * hyphen rule still applies) and hold the paid order for an admin's check
+ * before it is issued — it reads as PENDING meanwhile.
+ */
+export type PlateType =
+  | "custom"
+  | "diplomatic"
+  | "export"
+  | "government"
+  | "historic"
+  | "temporary"
+  | "transfer"
+  | "other"
+
 export interface OrderAction {
   eligible: boolean
   available_at?: number | null
@@ -436,6 +483,8 @@ export interface Order {
   payment_link?: string
   /** the one promo this order carries, or null (helpers/promo-rules.js#publicPromoView) */
   promo?: OrderPromo | null
+  /** the invoice's billing company, or null for a personal invoice */
+  company?: OrderCompany | null
 }
 
 /**
@@ -461,6 +510,13 @@ export interface CreateOrderCar {
   plate: string
   country: string
   vin_code?: string
+  /**
+   * A special plate (diplomatic, temporary, …): the server skips the
+   * country's format rules for it and holds the paid order for an admin's
+   * check. Omit for a standard plate.
+   */
+  type?: PlateType
+
   /**
    * The single Euro norm from the registration certificate ("euro4",
    * "electric"), for a product priced by emission class. Omitted: the
@@ -532,6 +588,24 @@ export interface CreateOrderBody {
     /** cents; cap what may be taken from the wallet for this order */
     max_amount?: number
   }
+  /**
+   * "Invoice for a company": the invoice PDF is addressed to this company
+   * instead of the buyer's email. All six fields are required once the
+   * object is sent (≤ 200 characters each, `country` a two-letter ISO code,
+   * `tax_id` with at least one letter or digit) — otherwise 400
+   * `invalid_company` with `field` naming the offender. A snapshot the order
+   * keeps as sent; it cannot be changed once the invoice is issued.
+   */
+  company?: CreateOrderCompany
+}
+
+export interface CreateOrderCompany {
+  name: string
+  tax_id: string
+  address: string
+  city: string
+  zip: string
+  country: string
 }
 
 /**
@@ -691,7 +765,7 @@ export interface PromoValidateBody {
   /** null asks for the best auto-apply campaign instead of a typed code */
   code: string | null
   /** may be empty for a price-only preview before the plate is typed */
-  cars: { plate: string; country: string; emission_class?: string }[]
+  cars: { plate: string; country: string; emission_class?: string; type?: PlateType }[]
   products: PromoValidateProduct[]
   /** guests / anonymous installs: what per-user limits key on */
   email?: string

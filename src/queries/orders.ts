@@ -143,7 +143,15 @@ export function usePaymentStatus(orderId: string | null, watching: boolean) {
 export function useInvalidateOrders() {
   const queryClient = useQueryClient()
   const { scope } = useSessionScope()
-  return () => queryClient.invalidateQueries({ queryKey: orderKeys.all(scope) })
+  return () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: orderKeys.all(scope) }),
+      // every order writes the plate picker's and the company picker's
+      // memory (GET /me/vehicles, GET /me/companies), so they refetch with
+      // the orders — the next checkout then offers what this one typed
+      queryClient.invalidateQueries({ queryKey: ["account", scope, "vehicles"] }),
+      queryClient.invalidateQueries({ queryKey: ["account", scope, "companies"] }),
+    ]).then(() => undefined)
 }
 
 /* ------------------------------------------------------------ mutations */

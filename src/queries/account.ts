@@ -12,6 +12,7 @@ import { useSessionScope } from "@/queries/session"
 import { useAuthStore } from "@/stores/auth"
 import type {
   AppNotification,
+  BillingCompany,
   Consent,
   DeletionPreview,
   DeletionResult,
@@ -32,6 +33,7 @@ import type {
 export const accountKeys = {
   all: (scope: string) => ["account", scope] as const,
   vehicles: (scope: string) => ["account", scope, "vehicles"] as const,
+  companies: (scope: string) => ["account", scope, "companies"] as const,
   /** root of everything notification-shaped (list + summary) */
   notifications: (scope: string) => ["account", scope, "notifications"] as const,
   notificationsList: (scope: string) =>
@@ -58,6 +60,23 @@ export function useVehicles() {
   return useQuery({
     queryKey: accountKeys.vehicles(scope),
     queryFn: () => apiResult<Vehicle[]>("/public/me/vehicles"),
+    enabled: ready,
+  })
+}
+
+/**
+ * GET /public/me/companies — guest ok. The billing companies this account
+ * has invoiced through, newest use first: the "invoice for a company"
+ * picker's memory, the way /me/vehicles is the plate picker's. Signed in:
+ * one entry per company across the website and this app (the server
+ * collapses spellings of one tax id). Guest: the companies on the orders
+ * this session placed itself, with string ids.
+ */
+export function useCompanies() {
+  const { scope, ready } = useSessionScope()
+  return useQuery({
+    queryKey: accountKeys.companies(scope),
+    queryFn: () => apiResult<BillingCompany[]>("/public/me/companies"),
     enabled: ready,
   })
 }

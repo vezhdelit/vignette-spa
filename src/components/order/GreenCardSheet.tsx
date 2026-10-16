@@ -57,9 +57,26 @@ export function greenCardEligible(
   return categoryForProduct(catalog, product) !== null
 }
 
-/** The insurer's vehicle category for the product's class (2a → "a" → car). */
+/**
+ * Our vehicle class letter for a catalog product: the server's
+ * `vehicle_class` (GET /public/catalog/products), which is what the Green
+ * Card catalogue's vehicle_classes are. The derivation from `vehicle_type`
+ * (the products table's word: car / van / moto) and the product name's
+ * class suffix (vignette-si-2a) only covers an API that predates the field.
+ */
+const CLASS_BY_VEHICLE_TYPE: Record<string, string> = { car: "a", van: "b", moto: "m" }
+
+export function vehicleClassOf(product: CatalogProduct): string | null {
+  if (product.vehicle_class !== undefined) return product.vehicle_class
+  const byType = CLASS_BY_VEHICLE_TYPE[(product.vehicle_type || "").toLowerCase()]
+  if (byType) return byType
+  const bySuffix = /-[12]([abm])$/i.exec(product.name)
+  return bySuffix ? bySuffix[1].toLowerCase() : null
+}
+
+/** The insurer's vehicle category for the product's class ("a" → car, "m" → moto). */
 export function categoryForProduct(catalog: GreenCardCatalog, product: CatalogProduct) {
-  const vehicleClass = (product.vehicle_type || "").slice(-1).toLowerCase()
+  const vehicleClass = vehicleClassOf(product)
   if (!vehicleClass) return null
   return (
     catalog.vehicle_categories.find((c) => c.vehicle_classes.includes(vehicleClass)) ?? null

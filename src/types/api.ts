@@ -841,7 +841,14 @@ export interface CatalogProduct {
   icon: string
   color: string | null
   country: string
+  /** the products table's word: car | van | moto | trailer; null for bridges and tunnels */
   vehicle_type: string | null
+  /**
+   * our class letter — a car, b van, m moto, null otherwise — the one the
+   * Green Card catalogue's vehicle_categories[].vehicle_classes is matched
+   * against. Optional only until every API answers it.
+   */
+  vehicle_class?: "a" | "b" | "m" | null
   priority: number
   status: "active" | "offline"
   restrictions: ProductRestrictions | null

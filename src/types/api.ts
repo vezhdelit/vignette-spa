@@ -485,6 +485,150 @@ export interface Order {
   promo?: OrderPromo | null
   /** the invoice's billing company, or null for a personal invoice */
   company?: OrderCompany | null
+  /** the insurance policies bought with this order (Green Card today); [] when none */
+  insurance?: Policy[]
+}
+
+/* -------------------------------------------------------------- insurance */
+
+/*
+ * Insurance products (docs/insurance/README.md): pricing is per product
+ * (GET /public/catalog/<product>, POST /public/me/<product>/calculate — Green
+ * Card today), while the order's `insurance[]` block, the policy object and
+ * GET /public/me/insurances are shared by every product and keyed by
+ * `product`.
+ */
+
+/**
+ * GET /public/catalog/green-card — the rules an app needs before it prices a
+ * Green Card: who is eligible (UA plates), the duration codes, the insurer's
+ * vehicle categories and which of our vehicle classes map to them, the
+ * start-date window and the policyholder requirements.
+ */
+export interface GreenCardCatalog {
+  enabled: boolean
+  product: "green_card"
+  provider: string
+  plate_countries: string[]
+  zones: string[]
+  durations: { code: string; days?: number; months?: number }[]
+  vehicle_categories: {
+    id: number
+    alias: string
+    label: string
+    /** our vehicle classes ("a", "b", "m") that default to this category */
+    vehicle_classes: string[]
+  }[]
+  start: { min_days_ahead: number; max_days_ahead: number }
+  insurant: { min_age: number }
+  vehicle: {
+    total_weight: { min: number; max: number }
+    seats_count: { min: number; max: number }
+    year: { min: number; max: number }
+  }
+  from_price: { amount: number; currency: string }
+  currency: string
+  calculation_ttl_seconds: number
+}
+
+/** POST /public/me/green-card/calculate request. */
+export interface GreenCardCalculateBody {
+  vehicle: {
+    plate: string
+    country: string
+    category_id: number
+    total_weight: number
+    seats_count: number
+  }
+  trip: { zone: string; duration: string }
+  /** unix seconds; the policy's calendar day, ≥ tomorrow */
+  policy_start: number
+  insurant?: { birth: string }
+}
+
+/**
+ * The server's signed price. `calculation_id` is the only thing an order may
+ * reference; it expires at `expires_at`. The app never computes a price.
+ */
+export interface GreenCardCalculation {
+  calculation_id: string
+  product: "green_card"
+  insurer: string
+  price: number
+  currency: string
+  tariff_uah: number
+  rate: number
+  policy_start: number
+  policy_end: number
+  expires_at: number
+  offers: { insurer: string; price: number; tariff_uah: number }[]
+  /** TAS: the passport block becomes mandatory */
+  requires_passport: boolean
+}
+
+/** A Green Card entry of `insurance[]` on POST /public/me/orders. */
+export interface GreenCardOrderEntry {
+  calculation_id: string
+  /** index into cars[] */
+  car: number
+  policy_start: number
+  vehicle: {
+    category_id: number
+    make: string
+    model: string
+    year: number
+    vin?: string
+    engine_capacity?: number
+    own_weight?: number
+    total_weight: number
+    seats_count: number
+  }
+  insurant: {
+    first_name: string
+    last_name: string
+    first_name_latin: string
+    last_name_latin: string
+    tax_id: string
+    birth: string
+    phone: string
+    city: string
+    passport?: { series: string; number: string; issued_at: string; issued_by: string }
+  }
+}
+
+export type PolicyStatus = "created" | "processing" | "issued" | "failed"
+export type PolicyDocumentType = "form" | "certificate"
+
+/** The Green Card half of a policy: what `details` holds when `product` is "green_card". */
+export interface GreenCardPolicyDetails {
+  vehicle: { plate: string | null; country: string; make: string | null; model: string | null }
+  zone: string
+  duration: string | null
+}
+
+/**
+ * An insurance policy as every order read and GET /public/me/insurances
+ * return it, the same shape for every product: the shared fields at the
+ * top, the product's own under `details`. A product this build predates
+ * still renders the top half.
+ */
+export interface Policy {
+  id: number
+  product: "green_card" | (string & {})
+  /** the order's public id (what /public/me/orders/:id takes), or null */
+  order_id: string | null
+  status: PolicyStatus
+  insurer: string | null
+  price_eur: number
+  valid_from: number | null
+  valid_to: number | null
+  /** the insurer's validity check — show as a QR / link */
+  verification_url: string | null
+  /** relative, authenticated: fetch with the token, expect application/pdf */
+  documents: { type: PolicyDocumentType; url: string }[]
+  failure: { reason: string; message: string | null; retrying: boolean } | null
+  created_at: number | null
+  details: GreenCardPolicyDetails | Record<string, unknown>
 }
 
 /**
@@ -597,6 +741,15 @@ export interface CreateOrderBody {
    * keeps as sent; it cannot be changed once the invoice is issued.
    */
   company?: CreateOrderCompany
+  /**
+   * Insurance policies — Green Card today, one per insured car — each
+   * referencing a signed calculation from POST /public/me/green-card/calculate.
+   * The server re-matches the calculation, runs the insurer's rules before
+   * any money moves and adds the price to payment.due. 400 invalid_insurance
+   * / insurance_calculation_* / green_card_* with `field` = insurance.N.<path>
+   * and `product`.
+   */
+  insurance?: GreenCardOrderEntry[]
 }
 
 export interface CreateOrderCompany {
@@ -634,6 +787,8 @@ export interface CreateOrderResult {
    * response; `wallet` is null unless the request asked to use it.
    */
   payment?: OrderPaymentSummary
+  /** the policies just created, when the body carried `insurance` */
+  insurance?: Policy[]
 }
 
 /** All cents. `due` is what the payment page will charge. */
@@ -770,6 +925,8 @@ export interface PromoValidateBody {
   /** guests / anonymous installs: what per-user limits key on */
   email?: string
   installation_id?: string
+  /** the insurance calculations in the cart, so price_preview includes them */
+  insurance?: { calculation_id: string }[]
 }
 
 /* --------------------------------------------------------------- vehicles */

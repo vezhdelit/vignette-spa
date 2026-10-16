@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import { PlateBadge } from "@/components/order/PlateBadge"
+import { PolicyCard } from "@/components/home/PolicyCard"
 import { VehicleLookupRow } from "@/components/order/VehicleLookup"
 import { FlagRect } from "@/lib/countries"
 import { countryLabel, PLATE_COUNTRIES, Flag } from "@/lib/countries"
@@ -231,6 +232,12 @@ export function OrderCard({
           {order.promo && <OrderPromoNote promo={order.promo} />}
           {/* the company the invoice is issued to, when it is not the buyer */}
           {order.company && <OrderCompanyNote company={order.company} />}
+          {/* the insurance policies bought with the order (Green Card today) —
+              polled while the insurer writes them, then the documents and the
+              validity link */}
+          {order.insurance?.map((policy) => (
+            <PolicyCard key={policy.id} policy={policy} enabled={expanded} />
+          ))}
 
           {awaitingPayment ? (
             canPay && (

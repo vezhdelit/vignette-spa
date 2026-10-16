@@ -38,6 +38,14 @@ import { PromoCodeInput } from "@/components/order/PromoCodeInput"
 import { VehicleLookupRow } from "@/components/order/VehicleLookup"
 import { PlateTypeSelect, PLATE_TYPE_KEYS } from "@/components/order/PlateTypeSelect"
 import {
+  GreenCardRow,
+  GreenCardSheet,
+  GreenCardSummary,
+  greenCardEligible,
+  type GreenCardDraft,
+} from "@/components/order/GreenCardSheet"
+import { calculateGreenCard, useGreenCardCatalog } from "@/queries/green-card"
+import {
   CompanyInvoiceForm,
   companyComplete,
   companyPayload,
@@ -111,7 +119,12 @@ import {
   useValidateVehicles,
 } from "@/queries/vehicles"
 import { cn } from "@/lib/utils"
-import type { CatalogProduct, PlateType, PromoValidateResult } from "@/types/api"
+import type {
+  CatalogProduct,
+  PlateType,
+  PromoValidateResult,
+  VehicleLookup,
+} from "@/types/api"
 
 /** The API sends restriction keys, not labels — same set as the product card. */
 const RESTRICTION_KEYS: Record<string, MessageKey> = {
@@ -191,6 +204,15 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   const [companyDraft, setCompanyDraft] = useState<CompanyDraft>(EMPTY_COMPANY)
   // the server's `invalid_company` message, shown under the form
   const [companyError, setCompanyError] = useState<string | null>(null)
+  // Green Card (docs/insurance/README.md): the server-priced, signed
+  // calculation plus the policy entry the order will carry. The sheet is
+  // nested over this one; `lookedUp` is the registry's answer for the
+  // plate, which prefills the vehicle block.
+  const [greenCard, setGreenCard] = useState<GreenCardDraft | null>(null)
+  const [greenCardOpen, setGreenCardOpen] = useState(false)
+  const [greenCardError, setGreenCardError] = useState<string | null>(null)
+  const [lookedUp, setLookedUp] = useState<VehicleLookup | null>(null)
+  const greenCardCatalog = useGreenCardCatalog().data
   const [vin, setVin] = useState("")
   const [vinOpen, setVinOpen] = useState(false)
   const [period, setPeriod] = useState<string | null>(null)
@@ -293,6 +315,10 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
       setCompanyEnabled(false)
       setCompanyDraft(EMPTY_COMPANY)
       setCompanyError(null)
+      setGreenCard(null)
+      setGreenCardOpen(false)
+      setGreenCardError(null)
+      setLookedUp(null)
       setPromoCode("")
       setAppliedCode(null)
       setPromo(null)
@@ -371,8 +397,11 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
         },
       ],
       ...(/.+@.+\..+/.test(typedEmail) ? { email: typedEmail } : {}),
+      // the Green Card in the cart, so the preview's total includes it
+      ...(greenCard ? { insurance: [{ calculation_id: greenCard.calculation.calculation_id }] } : {}),
     }
   }, [
+    greenCard,
     product,
     period,
     plate,
@@ -506,8 +535,17 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   const servicePrice = selectedPrice
     ? Math.round((selectedPrice.total_price - selectedPrice.government_price) * 100) / 100
     : 0
+  // The Green Card is priced in EUR by the server and never converted here:
+  // it joins the headline total only while EUR is what is on screen, and the
+  // EUR charge line otherwise.
+  const greenCardEur = greenCard ? greenCard.calculation.price : 0
   const total = selectedPrice
-    ? Math.round((selectedPrice.total_price + (flexEnabled ? flexPrice : 0)) * 100) / 100
+    ? Math.round(
+        (selectedPrice.total_price +
+          (flexEnabled ? flexPrice : 0) +
+          (currency === "EUR" ? greenCardEur : 0)) *
+          100,
+      ) / 100
     : 0
   // what the payment provider actually takes — orders are always settled in
   // EUR; null while EUR is the display currency or the EUR catalog is missing
@@ -519,8 +557,11 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
     eurCatalog.flexOptions.find((f) => f.type === flexOption?.type)?.price ?? 0
   const eurTotal =
     currency !== "EUR" && eurPrice
-      ? Math.round((eurPrice.total_price + (flexEnabled ? eurFlexPrice : 0)) * 100) / 100
+      ? Math.round(
+          (eurPrice.total_price + (flexEnabled ? eurFlexPrice : 0) + greenCardEur) * 100,
+        ) / 100
       : null
+  const greenCardAvailable = greenCardEligible(greenCardCatalog, product, plateCountry)
   // A journey pass is valid for a year from its start date whatever its
   // trip count — periodDays maps "1j"/"2j" to 365, day counts to themselves.
   const endDate = period ? addDays(startDate, periodDays(period)) - 60 : startDate
@@ -688,8 +729,37 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
     }
     const company = companyPayload(companyEnabled, companyDraft)
     setCompanyError(null)
+    setGreenCardError(null)
     setDuplicateWarning(null)
     setStep("creating")
+
+    // A Green Card calculation lives 30 minutes. One about to lapse is
+    // refreshed here with the same inputs; if the insurer's price moved in
+    // between, the new price is shown before anything is charged.
+    let insuranceEntry = greenCard?.entry ?? null
+    if (greenCard && greenCard.calculation.expires_at - 60 < Math.floor(Date.now() / 1000)) {
+      try {
+        const fresh = await calculateGreenCard(greenCard.calculateBody)
+        const refreshed: GreenCardDraft = {
+          ...greenCard,
+          calculation: fresh,
+          entry: { ...greenCard.entry, calculation_id: fresh.calculation_id },
+        }
+        setGreenCard(refreshed)
+        insuranceEntry = refreshed.entry
+        if (fresh.price !== greenCard.calculation.price) {
+          toast.error(
+            t("greenCard.priceChanged", { price: formatPrice(fresh.price, "EUR") }),
+          )
+          setStep("confirm")
+          return
+        }
+      } catch (e) {
+        setGreenCardError(apiErrorMessage(e, t("greenCard.calculateFailed")))
+        setStep("confirm")
+        return
+      }
+    }
     try {
       const installationId = getInstallationId()
       const result = await createOrder.mutateAsync({
@@ -715,6 +785,8 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
           ],
           // the invoice's billing company, when asked for
           ...(company ? { company } : {}),
+          // the Green Card policy for the (one) car, when added
+          ...(insuranceEntry ? { insurance: [{ ...insuranceEntry, car: 0 }] } : {}),
           products: [
             {
               name: product.name,
@@ -835,6 +907,21 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
         // offender) — shown under the form, the order stays as typed
         setCompanyError(e.message)
         toast.error(e.message)
+      } else if (
+        e instanceof ApiRequestError &&
+        (e.type === "invalid_insurance" ||
+          e.type.startsWith("insurance_") ||
+          e.type.startsWith("green_card_"))
+      ) {
+        // the server refused the Green Card: a stale or mismatched
+        // calculation is dropped (the sheet re-prices on reopen), a field
+        // problem is shown on the recap and inside the sheet
+        if (e.type.startsWith("insurance_calculation")) {
+          setGreenCard(null)
+        }
+        setGreenCardError(e.message)
+        toast.error(e.message)
+        if (!e.type.startsWith("insurance_calculation")) setGreenCardOpen(true)
       } else {
         const message =
           e instanceof ApiRequestError ? e.message : t("order.createFailed")
@@ -913,6 +1000,25 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
           // the sheet (period chips / flag row vanish)
           <div className="mx-auto w-full max-w-md min-h-0 overflow-y-auto px-4 pt-2 pb-4">
             <StepIndicator step={step} />
+
+            {greenCardAvailable && greenCardCatalog && (
+              <GreenCardSheet
+                open={greenCardOpen}
+                onOpenChange={setGreenCardOpen}
+                catalog={greenCardCatalog}
+                product={product}
+                plate={plate.trim().toUpperCase().replace(/\s+/g, "")}
+                plateCountry={plateCountry}
+                lookup={lookedUp}
+                vignetteStart={startDate}
+                value={greenCard}
+                serverError={greenCardError}
+                onChange={(draft) => {
+                  setGreenCard(draft)
+                  setGreenCardError(null)
+                }}
+              />
+            )}
 
             {step === "order" ? (
               <>
@@ -1065,6 +1171,9 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                   tone="dark"
                   className="mt-2"
                   onVehicle={(vehicle) => {
+                    // the Green Card sheet prefills make, model, year and
+                    // the weights from the same answer
+                    setLookedUp(vehicle)
                     if (vehicle.vin_code) {
                       setVin(vehicle.vin_code)
                       setVinOpen(true)
@@ -1306,6 +1415,21 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                         showBadges
                       />
                     )}
+
+                    {/* Green Card for a Ukrainian plate: priced by the
+                        server, added from its own sheet */}
+                    {greenCardAvailable && greenCardCatalog && (
+                      <GreenCardRow
+                        catalog={greenCardCatalog}
+                        draft={greenCard}
+                        onOpen={() => setGreenCardOpen(true)}
+                        onRemove={() => {
+                          setGreenCard(null)
+                          setGreenCardError(null)
+                        }}
+                        disabled={plate.trim().length < 3 || (plateType === null && plateVerdict?.valid === false)}
+                      />
+                    )}
                   </CardContent>
                 </Card>
 
@@ -1435,6 +1559,22 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                     <ChevronDown className="size-5 shrink-0 text-navy-soft" />
                   </CardContent>
                 </Card>
+
+                {/* the Green Card on the order, with the server's refusal
+                    (if any) and a way back into the sheet */}
+                {greenCard && (
+                  <GreenCardSummary
+                    draft={greenCard}
+                    plate={plate}
+                    plateCountry={plateCountry}
+                    error={greenCardError}
+                    onEdit={() => setGreenCardOpen(true)}
+                    onRemove={() => {
+                      setGreenCard(null)
+                      setGreenCardError(null)
+                    }}
+                  />
+                )}
 
                 {/* add other e-vignettes */}
                 {onSwitchCountry && (
@@ -1615,6 +1755,13 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                   </span>
                 </div>
                 <TotalNote promo={activePromo} currency={currency} eurTotal={eurTotal} />
+                {greenCard && currency !== "EUR" && (
+                  <p className="mt-1 px-1 text-right text-xs font-semibold text-white/75">
+                    {t("greenCard.chargedInEuro", {
+                      price: formatPrice(greenCard.calculation.price, "EUR"),
+                    })}
+                  </p>
+                )}
 
                 <Button
                   variant="mint"

@@ -516,7 +516,7 @@ export interface GreenCardCatalog {
     id: number
     alias: string
     label: string
-    /** our vehicle classes ("a", "b", "m") that default to this category */
+    /** our vehicle class codes this category covers ("2a", "2b" → car; "1m" → moto) — match a product's vehicle_class */
     vehicle_classes: string[]
   }[]
   start: { min_days_ahead: number; max_days_ahead: number }
@@ -844,11 +844,12 @@ export interface CatalogProduct {
   /** the products table's word: car | van | moto | trailer; null for bridges and tunnels */
   vehicle_type: string | null
   /**
-   * our class letter — a car, b van, m moto, null otherwise — the one the
-   * Green Card catalogue's vehicle_categories[].vehicle_classes is matched
-   * against. Optional only until every API answers it.
+   * our class code — 2a car, 2b van, 1m moto, u trailer, null for bridges
+   * and tunnels — the one the Green Card catalogue's
+   * vehicle_categories[].vehicle_classes is matched against. Optional only
+   * until every API answers it.
    */
-  vehicle_class?: "a" | "b" | "m" | null
+  vehicle_class?: "2a" | "2b" | "1m" | "u" | (string & {}) | null
   priority: number
   status: "active" | "offline"
   restrictions: ProductRestrictions | null

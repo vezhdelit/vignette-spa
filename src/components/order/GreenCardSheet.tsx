@@ -101,6 +101,11 @@ const dayStartOf = (date: Date) => {
   return Math.floor(copy.getTime() / 1000)
 }
 const todayIso = () => new Date().toISOString().slice(0, 10)
+// "YYYY-MM-DD" <-> a local calendar day. Never through toISOString on the
+// picked Date: that is UTC and moves the day for anyone east of Greenwich.
+const isoToDate = (iso: string) => (DATE.test(iso) ? new Date(`${iso}T00:00:00`) : undefined)
+const dateToIso = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
 
 const ageOf = (birth: string) => {
   const b = new Date(birth)
@@ -399,6 +404,8 @@ function GreenCardBody({
   const set = (field: keyof Form) => (next: string | number) =>
     setForm((f) => ({ ...f, [field]: next }))
   const [dateOpen, setDateOpen] = useState(false)
+  // which holder date field's calendar is open (birth, passport_issued_at)
+  const [openDateField, setOpenDateField] = useState<keyof Form | null>(null)
   const [touched, setTouched] = useState(false)
 
   // ——— the price: calculated on the server whenever its inputs change ———
@@ -582,6 +589,50 @@ function GreenCardBody({
     )
   }
 
+  // A past date on a phone is a wheel of 100 years; the shadcn calendar with
+  // year/month dropdowns is the one picker used everywhere.
+  const dateField = (name: "birth" | "passport_issued_at", label: string) => {
+    const problem = touched ? problems[name] : undefined
+    const value = isoToDate(form[name])
+    const today = new Date()
+    return (
+      <div>
+        <Popover open={openDateField === name} onOpenChange={(open) => setOpenDateField(open ? name : null)}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="secondary"
+              aria-label={label}
+              aria-invalid={Boolean(problem)}
+              className={cn(FIELD, "justify-between font-normal hover:bg-[#e8edf3]", problem && "ring-2 ring-pink/60")}
+            >
+              <span className={cn("flex items-center gap-2 truncate", !value && "text-navy-soft/70")}>
+                <CalendarDays className="size-4 shrink-0" />
+                {value ? form[name].split("-").reverse().join(".") : label}
+              </span>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-auto p-0">
+            <Calendar
+              mode="single"
+              captionLayout="dropdown"
+              startMonth={new Date(today.getFullYear() - 100, 0)}
+              endMonth={today}
+              selected={value}
+              defaultMonth={value ?? today}
+              disabled={{ after: today }}
+              onSelect={(picked) => {
+                if (!picked) return
+                set(name)(dateToIso(picked))
+                setOpenDateField(null)
+              }}
+            />
+          </PopoverContent>
+        </Popover>
+        {problem && <p className="mt-1 px-1 text-xs font-semibold text-pink">{t(problem)}</p>}
+      </div>
+    )
+  }
+
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-md flex-1 flex-col">
       <div className="px-5 pt-3">
@@ -714,7 +765,7 @@ function GreenCardBody({
             {field("first_name", { label: t("greenCard.firstNameLocal") })}
             {field("last_name", { label: t("greenCard.lastNameLocal") })}
             {field("tax_id", { label: t("greenCard.taxId"), inputMode: "numeric", maxLength: 10 })}
-            {field("birth", { label: t("greenCard.birth"), type: "date", max: todayIso() })}
+            {dateField("birth", t("greenCard.birth"))}
             {field("phone", { label: t("greenCard.phone"), type: "tel", autoComplete: "tel", placeholder: "+380 93 123 45 67" })}
             {field("city", { label: t("greenCard.city"), autoComplete: "address-level2" })}
           </div>
@@ -727,7 +778,7 @@ function GreenCardBody({
           <div className="grid grid-cols-2 gap-2">
             {field("passport_series", { label: t("greenCard.passportSeries"), className: "uppercase", maxLength: 2, placeholder: "AA" })}
             {field("passport_number", { label: t("greenCard.passportNumber"), inputMode: "numeric", maxLength: 6, placeholder: "123456" })}
-            {field("passport_issued_at", { label: t("greenCard.passportIssuedAt"), type: "date", max: todayIso() })}
+            {dateField("passport_issued_at", t("greenCard.passportIssuedAt"))}
             {field("passport_issued_by", { label: t("greenCard.passportIssuedBy"), placeholder: "2112" })}
           </div>
           <p className="mt-2 flex gap-1.5 px-1 text-xs leading-snug text-navy-soft">

@@ -559,5 +559,38 @@
     "many": "przejazdów",
     "other": "przejazdu"
   },
-  "orderCard.tunnelOf": "Tunel {name}"
+  "orderCard.tunnelOf": "Tunel {name}",
+  "nav.market": "Sklep",
+  "period.months": {
+    "one": "{count} miesiąc",
+    "few": "{count} miesiące",
+    "many": "{count} miesięcy",
+    "other": "{count} miesiąca"
+  },
+  "unit.months": {
+    "one": "miesiąc",
+    "few": "miesiące",
+    "many": "miesięcy",
+    "other": "miesiąca"
+  },
+  "orderCard.greenCard": "Zielona Karta",
+  "greenCard.status.cancelled": "Anulowana",
+  "payment.receivedPolicyBody": "Ubezpieczyciel wystawia Twoją Zieloną Kartę – zwykle w ciągu kilku minut. Dokumenty pojawią się przy zamówieniu.",
+  "payment.goToOrders": "Do moich zamówień",
+  "market.title": "Sklep",
+  "market.subtitle": "Ubezpieczenia i usługi na drogę, kupowane osobno – bez winiety.",
+  "market.greenCard.body": "Ubezpieczenie OC na wyjazd za granicę dla ukraińskiej rejestracji. Cena od ubezpieczyciela, wystawienie po opłaceniu – dokumenty pojawią się w aplikacji.",
+  "market.greenCard.from": "Od {price}",
+  "market.greenCard.buy": "Kup Zieloną Kartę",
+  "market.greenCard.paused": "Sprzedaż Zielonej Karty jest chwilowo wstrzymana.",
+  "market.empty": "Tu nie ma jeszcze nic do kupienia.",
+  "policyOrder.title": "Kup Zieloną Kartę",
+  "policyOrder.subtitle": "Samodzielna Zielona Karta dla tej rejestracji – cena od ubezpieczyciela, wystawienie po opłaceniu.",
+  "policyOrder.stepVehicle": "Pojazd",
+  "policyOrder.stepConfirm": "Potwierdź",
+  "policyOrder.vehicleType": "Typ pojazdu",
+  "policyOrder.continue": "Dalej",
+  "policyOrder.continueWithPrice": "Dalej · {price}",
+  "policyOrder.total": "Razem · Zielona Karta",
+  "policyOrder.plateNote": "Poniższa Zielona Karta jest dla tej rejestracji."
 }

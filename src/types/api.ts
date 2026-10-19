@@ -560,18 +560,21 @@ export interface GreenCardCalculation {
   rate: number
   policy_start: number
   policy_end: number
+  /** the duration code priced — the order's product line repeats it as `period` */
+  duration: string
+  zone: string
   expires_at: number
   offers: { insurer: string; price: number; tariff_uah: number }[]
   /** TAS: the passport block becomes mandatory */
   requires_passport: boolean
 }
 
-/** A Green Card entry of `insurance[]` on POST /public/me/orders. */
-export interface GreenCardOrderEntry {
+/**
+ * The policy's own facts on a Green Card product line (`insurance` on a
+ * `products[]` line named "green-card", docs/insurance/README.md).
+ */
+export interface GreenCardLineInsurance {
   calculation_id: string
-  /** index into cars[] */
-  car: number
-  policy_start: number
   vehicle: {
     category_id: number
     make: string
@@ -596,7 +599,22 @@ export interface GreenCardOrderEntry {
   }
 }
 
-export type PolicyStatus = "created" | "processing" | "issued" | "failed"
+/**
+ * A Green Card as a line of `products[]` on POST /public/me/orders — one
+ * order row of its own (2026-10-19): next to the vignettes, or alone for a
+ * standalone policy. `period` is the calculation's `duration`, `start_date`
+ * its `policy_start`, `car` the index into cars[] of the insured car.
+ */
+export interface GreenCardProductLine {
+  name: "green-card"
+  period: string
+  start_date: number
+  custom_id: string
+  car: number
+  insurance: GreenCardLineInsurance
+}
+
+export type PolicyStatus = "created" | "processing" | "issued" | "failed" | "cancelled"
 export type PolicyDocumentType = "form" | "certificate"
 
 /** The Green Card half of a policy: what `details` holds when `product` is "green_card". */
@@ -686,7 +704,12 @@ export interface CreateOrderProduct {
 export interface CreateOrderBody {
   terms_and_privacy_accepted: boolean
   cars: CreateOrderCar[]
-  products: CreateOrderProduct[]
+  /**
+   * Road products (vignettes, tunnel passes) and Green Card lines side by
+   * side; a basket may also be one Green Card line alone. Every line becomes
+   * an order row of its own.
+   */
+  products: (CreateOrderProduct | GreenCardProductLine)[]
   allowed_payment_providers?: string[]
   open_order_details_by_default?: boolean
   email?: string
@@ -741,15 +764,6 @@ export interface CreateOrderBody {
    * keeps as sent; it cannot be changed once the invoice is issued.
    */
   company?: CreateOrderCompany
-  /**
-   * Insurance policies — Green Card today, one per insured car — each
-   * referencing a signed calculation from POST /public/me/green-card/calculate.
-   * The server re-matches the calculation, runs the insurer's rules before
-   * any money moves and adds the price to payment.due. 400 invalid_insurance
-   * / insurance_calculation_* / green_card_* with `field` = insurance.N.<path>
-   * and `product`.
-   */
-  insurance?: GreenCardOrderEntry[]
 }
 
 export interface CreateOrderCompany {
@@ -771,6 +785,8 @@ export interface CreatedOrderStub {
   custom_id: string
   currency?: string
   flex?: { type?: string; enabled?: boolean; price?: number } | null
+  /** "insurance" for a Green Card line's own order; absent for a road product */
+  type?: "insurance"
 }
 
 export interface CreateOrderResult {
@@ -787,7 +803,7 @@ export interface CreateOrderResult {
    * response; `wallet` is null unless the request asked to use it.
    */
   payment?: OrderPaymentSummary
-  /** the policies just created, when the body carried `insurance` */
+  /** the policies just created, one per Green Card line, each naming its own order */
   insurance?: Policy[]
 }
 
@@ -922,6 +938,10 @@ export interface PromoValidateProduct {
   period: string
   start_date: number
   flex?: { type: "default" | "expanded"; enabled: boolean }
+  /** a Green Card line (name "green-card"): the policy's facts, as on the order */
+  car?: number
+  custom_id?: string
+  insurance?: GreenCardLineInsurance
 }
 
 export interface PromoValidateBody {
@@ -933,8 +953,6 @@ export interface PromoValidateBody {
   /** guests / anonymous installs: what per-user limits key on */
   email?: string
   installation_id?: string
-  /** the insurance calculations in the cart, so price_preview includes them */
-  insurance?: { calculation_id: string }[]
 }
 
 /* --------------------------------------------------------------- vehicles */

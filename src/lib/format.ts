@@ -151,10 +151,27 @@ export function journeyCount(period: string | number): number | null {
   return match ? Number(match[1]) : null
 }
 
+/**
+ * A Green Card's period is a duration code — "15d", "1m" … "12m" (the
+ * insurer's own list, GET /public/catalog/green-card) — on an order row of
+ * its own. Null for every vignette period.
+ */
+export function durationCode(period: string | number): { count: number; unit: "d" | "m" } | null {
+  const match = String(period).match(/^(\d+)([dm])$/i)
+  return match ? { count: Number(match[1]), unit: match[2].toLowerCase() as "d" | "m" } : null
+}
+
 export function periodParts(period: string | number): { count: string; unit: string } {
   const journeys = journeyCount(period)
   if (journeys !== null) {
     return { count: String(journeys), unit: t("unit.journeys", { count: journeys }) }
+  }
+  const duration = durationCode(period)
+  if (duration) {
+    return {
+      count: String(duration.count),
+      unit: t(duration.unit === "m" ? "unit.months" : "unit.days", { count: duration.count }),
+    }
   }
   const days = Number(period)
   if (!Number.isFinite(days)) return { count: String(period), unit: t("unit.days", { count: 2 }) }
@@ -166,6 +183,10 @@ export function periodParts(period: string | number): { count: string; unit: str
 export function periodLabel(period: string | number): string {
   const journeys = journeyCount(period)
   if (journeys !== null) return t("period.journeys", { count: journeys })
+  const duration = durationCode(period)
+  if (duration) {
+    return t(duration.unit === "m" ? "period.months" : "period.days", { count: duration.count })
+  }
   const days = Number(period)
   if (!Number.isFinite(days)) return String(period)
   if (days === 365 || days === 366) return t("period.years", { count: 1 })
@@ -179,5 +200,7 @@ export function periodLabel(period: string | number): string {
  */
 export function periodDays(period: string | number): number {
   if (journeyCount(period) !== null) return 365
+  const duration = durationCode(period)
+  if (duration) return duration.unit === "m" ? duration.count * 30 : duration.count
   return Number(period)
 }

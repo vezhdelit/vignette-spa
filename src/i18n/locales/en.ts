@@ -25,6 +25,7 @@ export const en = {
   "nav.vignettes": "Vignettes",
   "nav.support": "Support",
   "nav.account": "Account",
+  "nav.market": "Market",
   "bell.label": "Notifications",
   "bell.labelUnread": "Notifications, {count} unread",
 
@@ -45,11 +46,13 @@ export const en = {
   /* ------------------------------------------------------- units & periods */
   "period.days": { one: "{count} day", other: "{count} days" },
   "period.years": { one: "{count} year", other: "{count} years" },
+  "period.months": { one: "{count} month", other: "{count} months" },
   // tunnel passes sell trips, not days ("1j" / "2j" on the wire)
   "period.journeys": { one: "{count} journey", other: "{count} journeys" },
   /** the short unit under the big number on a period chip / order badge */
   "unit.days": { one: "day", other: "days" },
   "unit.years": { one: "year", other: "years" },
+  "unit.months": { one: "month", other: "months" },
   "unit.journeys": { one: "journey", other: "journeys" },
 
   /* ------------------------------------------------------------- home tab */
@@ -89,6 +92,7 @@ export const en = {
   "orderCard.journeysUsedUp": "All journeys used",
   "orderCard.vignetteOf": "Vignette of {country}",
   "orderCard.tunnelOf": "Tunnel {name}",
+  "orderCard.greenCard": "Green Card",
   "orderCard.detailsLabel": "Details",
   "orderCard.promo.cashbackPending": "cashback after payment",
   "orderCard.promo.cashbackGranted": "cashback credited to your wallet",
@@ -299,6 +303,7 @@ export const en = {
   "greenCard.status.processing": "Being issued",
   "greenCard.status.issued": "Issued",
   "greenCard.status.failed": "Not issued",
+  "greenCard.status.cancelled": "Cancelled",
   "greenCard.pendingNote": "The insurer is writing the policy — usually within minutes. The documents appear here.",
   "greenCard.failedRetrying": "The insurer could not take the policy yet; we are retrying automatically.",
   "greenCard.failedFinal": "The insurer refused this policy. Contact support — the amount will be refunded.",
@@ -370,6 +375,26 @@ export const en = {
     "Payment has been successfully accepted and will be processed within the next 3–5 minutes.",
   "payment.fineWarning": "Driving without an active vignette will result in a FINE TICKET",
   "payment.goToVignettes": "Go to my vignettes",
+  "payment.receivedPolicyBody":
+    "The insurer is writing your Green Card — usually within minutes. The documents appear on the order.",
+  "payment.goToOrders": "Go to my orders",
+  "market.title": "Market",
+  "market.subtitle": "Insurance and services for the road, bought on their own — no vignette needed.",
+  "market.greenCard.body":
+    "Motor liability insurance for driving abroad with a Ukrainian plate. Priced by the insurer, issued after payment — the documents appear in the app.",
+  "market.greenCard.from": "From {price}",
+  "market.greenCard.buy": "Buy Green Card",
+  "market.greenCard.paused": "Green Card sales are paused right now.",
+  "market.empty": "Nothing to buy here yet.",
+  "policyOrder.title": "Buy a Green Card",
+  "policyOrder.subtitle": "A standalone Green Card for this plate — priced by the insurer, issued after payment.",
+  "policyOrder.stepVehicle": "Vehicle",
+  "policyOrder.stepConfirm": "Confirm",
+  "policyOrder.vehicleType": "Vehicle type",
+  "policyOrder.continue": "Continue",
+  "policyOrder.continueWithPrice": "Continue · {price}",
+  "policyOrder.total": "Total · Green Card",
+  "policyOrder.plateNote": "The Green Card below is for this plate.",
 
   /* --------------------------------------------------------- support tab */
   "support.title": "Support",

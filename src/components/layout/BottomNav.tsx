@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom"
-import { House, MessageCircle, CircleUserRound } from "lucide-react"
+import { House, MessageCircle, CircleUserRound, Store } from "lucide-react"
 import { useT } from "@/i18n"
 import { cn } from "@/lib/utils"
 
@@ -29,6 +29,7 @@ function MotorwayIcon({ className }: { className?: string }) {
 const TABS = [
   { to: "/", key: "nav.home", icon: House },
   { to: "/vignettes", key: "nav.vignettes", icon: MotorwayIcon },
+  { to: "/market", key: "nav.market", icon: Store },
   { to: "/support", key: "nav.support", icon: MessageCircle },
   { to: "/account", key: "nav.account", icon: CircleUserRound },
 ] as const
@@ -45,7 +46,7 @@ export function BottomNav() {
             end={to === "/"}
             className={({ isActive }) =>
               cn(
-                "flex min-w-16 flex-col items-center gap-1 rounded-2xl px-2 py-1 transition-colors",
+                "flex min-w-0 flex-1 flex-col items-center gap-1 rounded-2xl px-1 py-1 transition-colors",
                 isActive ? "text-pink" : "text-navy-soft"
               )
             }

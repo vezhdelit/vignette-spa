@@ -559,5 +559,38 @@
     "many": "поїздок",
     "other": "поїздки"
   },
-  "orderCard.tunnelOf": "Тунель {name}"
+  "orderCard.tunnelOf": "Тунель {name}",
+  "nav.market": "Маркет",
+  "period.months": {
+    "one": "{count} місяць",
+    "few": "{count} місяці",
+    "many": "{count} місяців",
+    "other": "{count} місяця"
+  },
+  "unit.months": {
+    "one": "місяць",
+    "few": "місяці",
+    "many": "місяців",
+    "other": "місяця"
+  },
+  "orderCard.greenCard": "Зелена картка",
+  "greenCard.status.cancelled": "Скасовано",
+  "payment.receivedPolicyBody": "Страховик оформлює вашу Зелену картку — зазвичай це займає кілька хвилин. Документи з’являться в замовленні.",
+  "payment.goToOrders": "До моїх замовлень",
+  "market.title": "Маркет",
+  "market.subtitle": "Страхування та послуги в дорогу, які можна купити окремо — без віньєтки.",
+  "market.greenCard.body": "Автоцивілка для поїздок за кордон на українських номерах. Ціну рахує страховик, поліс оформлюється після оплати — документи з’являться в застосунку.",
+  "market.greenCard.from": "Від {price}",
+  "market.greenCard.buy": "Купити Зелену картку",
+  "market.greenCard.paused": "Продаж Зеленої картки зараз призупинено.",
+  "market.empty": "Тут поки нічого купити.",
+  "policyOrder.title": "Купити Зелену картку",
+  "policyOrder.subtitle": "Окрема Зелена картка для цього номера — ціну рахує страховик, поліс оформлюється після оплати.",
+  "policyOrder.stepVehicle": "Авто",
+  "policyOrder.stepConfirm": "Підтвердження",
+  "policyOrder.vehicleType": "Тип транспорту",
+  "policyOrder.continue": "Продовжити",
+  "policyOrder.continueWithPrice": "Продовжити · {price}",
+  "policyOrder.total": "Разом · Зелена картка",
+  "policyOrder.plateNote": "Зелена картка нижче — для цього номера."
 }

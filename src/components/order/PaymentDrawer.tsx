@@ -72,7 +72,14 @@ export function PaymentModal({
   )
 }
 
-export function DoneScreen({ onFinish }: { onFinish: () => void }) {
+export function DoneScreen({
+  onFinish,
+  kind = "vignette",
+}: {
+  onFinish: () => void
+  /** "policy": a standalone Green Card — no vignette, so no fine warning */
+  kind?: "vignette" | "policy"
+}) {
   const { t } = useT()
   return (
     <div className="flex min-h-[86dvh] flex-col px-5 pb-6">
@@ -85,18 +92,20 @@ export function DoneScreen({ onFinish }: { onFinish: () => void }) {
             {t("payment.receivedTitle")}
           </p>
           <p className="mt-2 text-[17px] font-medium text-white/90">
-            {t("payment.receivedBody")}
+            {kind === "policy" ? t("payment.receivedPolicyBody") : t("payment.receivedBody")}
           </p>
         </div>
-        <Alert className="rounded-2xl border-0 bg-pink text-left text-white [&>svg]:text-white">
-          <TriangleAlert className="size-6" />
-          <AlertDescription className="text-[15px] font-bold text-white">
-            {t("payment.fineWarning")}
-          </AlertDescription>
-        </Alert>
+        {kind === "vignette" && (
+          <Alert className="rounded-2xl border-0 bg-pink text-left text-white [&>svg]:text-white">
+            <TriangleAlert className="size-6" />
+            <AlertDescription className="text-[15px] font-bold text-white">
+              {t("payment.fineWarning")}
+            </AlertDescription>
+          </Alert>
+        )}
       </div>
       <Button variant="mint" size="xl" className="w-full text-lg tracking-[0.2em]" onClick={onFinish}>
-        {t("payment.goToVignettes")}
+        {kind === "policy" ? t("payment.goToOrders") : t("payment.goToVignettes")}
       </Button>
     </div>
   )

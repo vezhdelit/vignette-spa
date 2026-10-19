@@ -6,6 +6,7 @@ import { AppShell } from "@/components/layout/AppShell"
 import { InsightsTracker } from "@/components/InsightsTracker"
 import { HomePage } from "@/pages/HomePage"
 import { VignettesPage } from "@/pages/VignettesPage"
+import { MarketPage } from "@/pages/MarketPage"
 import { SupportPage } from "@/pages/SupportPage"
 import { AccountPage } from "@/pages/AccountPage"
 import { NotificationsPage } from "@/pages/NotificationsPage"
@@ -51,6 +52,7 @@ export default function App() {
           <Route element={<AppShell />}>
             <Route path="/" element={<HomePage />} />
             <Route path="/vignettes" element={<VignettesPage />} />
+            <Route path="/market" element={<MarketPage />} />
             <Route path="/support" element={<SupportPage />} />
             <Route path="/account" element={<AccountPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />

@@ -531,5 +531,34 @@
     "one": "Fahrt",
     "other": "Fahrten"
   },
-  "orderCard.tunnelOf": "Tunnel {name}"
+  "orderCard.tunnelOf": "Tunnel {name}",
+  "nav.market": "Markt",
+  "period.months": {
+    "one": "{count} Monat",
+    "other": "{count} Monate"
+  },
+  "unit.months": {
+    "one": "Monat",
+    "other": "Monate"
+  },
+  "orderCard.greenCard": "Grüne Karte",
+  "greenCard.status.cancelled": "Storniert",
+  "payment.receivedPolicyBody": "Der Versicherer stellt Ihre Grüne Karte aus – meist innerhalb von Minuten. Die Dokumente erscheinen bei der Bestellung.",
+  "payment.goToOrders": "Zu meinen Bestellungen",
+  "market.title": "Markt",
+  "market.subtitle": "Versicherungen und Services für die Reise, einzeln buchbar – ganz ohne Vignette.",
+  "market.greenCard.body": "Kfz-Haftpflichtversicherung für Fahrten im Ausland mit ukrainischem Kennzeichen. Preis vom Versicherer, Ausstellung nach Zahlung – die Dokumente erscheinen in der App.",
+  "market.greenCard.from": "Ab {price}",
+  "market.greenCard.buy": "Grüne Karte kaufen",
+  "market.greenCard.paused": "Der Verkauf der Grünen Karte ist gerade pausiert.",
+  "market.empty": "Hier gibt es noch nichts zu kaufen.",
+  "policyOrder.title": "Grüne Karte kaufen",
+  "policyOrder.subtitle": "Eine eigenständige Grüne Karte für dieses Kennzeichen – Preis vom Versicherer, Ausstellung nach Zahlung.",
+  "policyOrder.stepVehicle": "Fahrzeug",
+  "policyOrder.stepConfirm": "Bestätigen",
+  "policyOrder.vehicleType": "Fahrzeugtyp",
+  "policyOrder.continue": "Weiter",
+  "policyOrder.continueWithPrice": "Weiter · {price}",
+  "policyOrder.total": "Gesamt · Grüne Karte",
+  "policyOrder.plateNote": "Die Grüne Karte unten gilt für dieses Kennzeichen."
 }

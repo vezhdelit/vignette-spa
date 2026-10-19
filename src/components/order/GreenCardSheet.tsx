@@ -31,19 +31,21 @@ import type {
   GreenCardCalculateBody,
   GreenCardCalculation,
   GreenCardCatalog,
-  GreenCardOrderEntry,
+  GreenCardProductLine,
   VehicleLookup,
 } from "@/types/api"
 
+export type GreenCardVehicleCategory = GreenCardCatalog["vehicle_categories"][number]
+
 /**
- * What the order sheet keeps once the Green Card is added: the server's
- * signed calculation, the body that produced it (to refresh it when it
- * expires) and the order entry minus the car index.
+ * A Green Card the buyer has filled in: the server's signed calculation, the
+ * inputs it was made from, and the product line the order will carry —
+ * everything but `car` and `custom_id`, which the checkout adds.
  */
 export interface GreenCardDraft {
   calculation: GreenCardCalculation
   calculateBody: GreenCardCalculateBody
-  entry: Omit<GreenCardOrderEntry, "car">
+  line: Omit<GreenCardProductLine, "car" | "custom_id">
 }
 
 /** Whether this plate on this product may carry a Green Card at all. */
@@ -206,7 +208,7 @@ export function GreenCardRow({
         <span className="block text-[13px] font-semibold text-white/75">
           {draft
             ? t("greenCard.rowApplied", {
-                duration: durationLabel(t, draft.entry.vehicle ? draftDuration(draft) : null),
+                duration: durationLabel(t, draftDuration(draft)),
                 insurer: draft.calculation.insurer,
               })
             : t("greenCard.rowSubtitle")}
@@ -298,11 +300,15 @@ export function GreenCardSheet({
   value,
   onChange,
   serverError,
+  category = null,
+  saveLabel,
+  subtitle,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   catalog: GreenCardCatalog
-  product: CatalogProduct
+  /** the vignette the policy rides on — null for a standalone policy */
+  product: CatalogProduct | null
   plate: string
   plateCountry: string
   /** GET /public/vehicles/lookup result for this plate, if the registry answered */
@@ -313,6 +319,12 @@ export function GreenCardSheet({
   onChange: (draft: GreenCardDraft | null) => void
   /** the server's refusal from order create, shown at the top */
   serverError?: string | null
+  /** the insurer's vehicle category when there is no product to derive it from */
+  category?: GreenCardVehicleCategory | null
+  /** the primary button's label when it is not "Add Green Card" */
+  saveLabel?: (price: string | null) => string
+  /** the line under the title when it is not the add-on's */
+  subtitle?: string
 }) {
   return (
     <DrawerNested open={open} onOpenChange={onOpenChange}>
@@ -321,12 +333,15 @@ export function GreenCardSheet({
           <GreenCardBody
             catalog={catalog}
             product={product}
+            category={category}
             plate={plate}
             plateCountry={plateCountry}
             lookup={lookup}
             vignetteStart={vignetteStart}
             value={value}
             serverError={serverError}
+            saveLabel={saveLabel}
+            subtitle={subtitle}
             onClose={() => onOpenChange(false)}
             onSave={(draft) => {
               onChange(draft)
@@ -346,36 +361,47 @@ export function GreenCardSheet({
 function GreenCardBody({
   catalog,
   product,
+  category: categoryOverride,
   plate,
   plateCountry,
   lookup,
   vignetteStart,
   value,
   serverError,
+  saveLabel,
+  subtitle,
   onClose,
   onSave,
   onRemove,
 }: {
   catalog: GreenCardCatalog
-  product: CatalogProduct
+  product: CatalogProduct | null
+  category: GreenCardVehicleCategory | null
   plate: string
   plateCountry: string
   lookup: VehicleLookup | null
   vignetteStart: number
   value: GreenCardDraft | null
   serverError?: string | null
+  saveLabel?: (price: string | null) => string
+  subtitle?: string
   onClose: () => void
   onSave: (draft: GreenCardDraft) => void
   onRemove: () => void
 }) {
   const { t } = useT()
-  const category = useMemo(() => categoryForProduct(catalog, product), [catalog, product])
+  // the insurer's vehicle category: given outright for a standalone policy,
+  // otherwise derived from the vignette's vehicle class
+  const category = useMemo(
+    () => categoryOverride ?? (product ? categoryForProduct(catalog, product) : null),
+    [catalog, product, categoryOverride],
+  )
   const minStart = dayStart(catalog.start.min_days_ahead)
   const maxStart = dayStart(catalog.start.max_days_ahead)
 
   const [form, setForm] = useState<Form>(() => {
-    const v = value?.entry.vehicle
-    const i = value?.entry.insurant
+    const v = value?.line.insurance.vehicle
+    const i = value?.line.insurance.insurant
     return {
       make: v?.make ?? lookup?.brand ?? "",
       model: v?.model ?? lookup?.model ?? "",
@@ -386,7 +412,7 @@ function GreenCardBody({
       total_weight: String(v?.total_weight ?? lookup?.total_weight ?? ""),
       seats_count: String(v?.seats_count ?? ""),
       duration: value?.calculateBody.trip.duration ?? "15d",
-      policyStart: value?.entry.policy_start ?? Math.max(vignetteStart, minStart),
+      policyStart: value?.line.start_date ?? Math.max(vignetteStart, minStart),
       first_name: i?.first_name ?? "",
       last_name: i?.last_name ?? "",
       first_name_latin: i?.first_name_latin ?? "",
@@ -529,9 +555,12 @@ function GreenCardBody({
     onSave({
       calculation,
       calculateBody: calc.body,
-      entry: {
+      line: {
+        name: "green-card",
+        period: calculation.duration ?? form.duration,
+        start_date: form.policyStart,
+        insurance: {
         calculation_id: calculation.calculation_id,
-        policy_start: form.policyStart,
         vehicle: {
           category_id: category.id,
           make: form.make.trim(),
@@ -562,6 +591,7 @@ function GreenCardBody({
                 },
               }
             : {}),
+        },
         },
       },
     })
@@ -646,7 +676,7 @@ function GreenCardBody({
           </button>
         </div>
         <DrawerDescription className="mt-0.5 text-[13px] text-navy-soft">
-          {t("greenCard.subtitle")}
+          {subtitle ?? t("greenCard.subtitle")}
         </DrawerDescription>
         {serverError && (
           <p className="mt-2 rounded-xl bg-pink/10 px-3 py-2 text-[13px] font-semibold text-pink">
@@ -801,7 +831,9 @@ function GreenCardBody({
             </Button>
           )}
           <Button variant="mint" size="xl" className="flex-1" onClick={save} disabled={touched && !canSave}>
-            {calculation ? (
+            {saveLabel ? (
+              saveLabel(calculation ? formatPrice(calculation.price, "EUR") : null)
+            ) : calculation ? (
               <>
                 <Plus className="size-5" strokeWidth={3} />
                 {t("greenCard.add", { price: formatPrice(calculation.price, "EUR") })}

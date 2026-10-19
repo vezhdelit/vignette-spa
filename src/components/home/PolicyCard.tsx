@@ -17,6 +17,7 @@ const STATUS_KEYS: Record<Policy["status"], MessageKey> = {
   processing: "greenCard.status.processing",
   issued: "greenCard.status.issued",
   failed: "greenCard.status.failed",
+  cancelled: "greenCard.status.cancelled",
 }
 
 const STATUS_CLASS: Record<Policy["status"], string> = {
@@ -24,6 +25,7 @@ const STATUS_CLASS: Record<Policy["status"], string> = {
   processing: "bg-amber-400 text-[#4a3200]",
   issued: "bg-mint text-white",
   failed: "bg-pink text-white",
+  cancelled: "bg-neutral-600/70 text-white",
 }
 
 /** The product's own fields, when this build knows the product. */

@@ -559,5 +559,38 @@
     "many": "поездок",
     "other": "поездки"
   },
-  "orderCard.tunnelOf": "Туннель {name}"
+  "orderCard.tunnelOf": "Туннель {name}",
+  "nav.market": "Маркет",
+  "period.months": {
+    "one": "{count} месяц",
+    "few": "{count} месяца",
+    "many": "{count} месяцев",
+    "other": "{count} месяца"
+  },
+  "unit.months": {
+    "one": "месяц",
+    "few": "месяца",
+    "many": "месяцев",
+    "other": "месяца"
+  },
+  "orderCard.greenCard": "Зелёная карта",
+  "greenCard.status.cancelled": "Отменён",
+  "payment.receivedPolicyBody": "Страховщик оформляет вашу Зелёную карту — обычно это занимает несколько минут. Документы появятся в заказе.",
+  "payment.goToOrders": "К моим заказам",
+  "market.title": "Маркет",
+  "market.subtitle": "Страховки и услуги в дорогу, которые можно купить отдельно — без виньетки.",
+  "market.greenCard.body": "Автогражданка для поездок за границу на украинских номерах. Цену считает страховщик, полис оформляется после оплаты — документы появятся в приложении.",
+  "market.greenCard.from": "От {price}",
+  "market.greenCard.buy": "Купить Зелёную карту",
+  "market.greenCard.paused": "Продажа Зелёной карты сейчас приостановлена.",
+  "market.empty": "Здесь пока нечего купить.",
+  "policyOrder.title": "Купить Зелёную карту",
+  "policyOrder.subtitle": "Отдельная Зелёная карта для этого номера — цену считает страховщик, полис оформляется после оплаты.",
+  "policyOrder.stepVehicle": "Авто",
+  "policyOrder.stepConfirm": "Подтверждение",
+  "policyOrder.vehicleType": "Тип транспорта",
+  "policyOrder.continue": "Продолжить",
+  "policyOrder.continueWithPrice": "Продолжить · {price}",
+  "policyOrder.total": "Итого · Зелёная карта",
+  "policyOrder.plateNote": "Зелёная карта ниже — для этого номера."
 }

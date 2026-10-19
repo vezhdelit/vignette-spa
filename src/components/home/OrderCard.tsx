@@ -157,6 +157,11 @@ export function OrderCard({
   const car = order.cars[0]
   const countryName = countryLabel(order.country)
   const period = periodParts(order.period)
+  // A Green Card bought on its own, or next to a vignette: an order row of
+  // its own (type "insurance", docs/insurance/README.md). It has no
+  // e-vignette, nothing to transfer or modify, and its country is the
+  // insured car's — the row's own `country` is a placeholder.
+  const isPolicy = order.type === "insurance"
 
   const refundAction = order.full_refund?.eligible
     ? order.full_refund
@@ -250,6 +255,16 @@ export function OrderCard({
                 {t("orderCard.completePayment")}
               </Button>
             )
+          ) : isPolicy ? (
+            order.receipt && (
+              <div className="flex flex-wrap gap-2">
+                <ActionChip
+                  label={t("orderCard.receipt").toLocaleUpperCase()}
+                  icon={<FileText className="size-4 rounded bg-white p-0.5 text-navy" />}
+                  href={order.receipt}
+                />
+              </div>
+            )
           ) : (
             <>
               <div className="flex flex-wrap gap-2">
@@ -320,11 +335,16 @@ export function OrderCard({
         {/* footer strip */}
         <div className="flex items-center justify-between px-3 py-1.5">
           <span className="flex min-w-0 items-center gap-2">
-            <FlagRect code={order.country} className="h-5 w-7 shrink-0 rounded" />
+            <FlagRect
+              code={isPolicy ? car?.country || order.country : order.country}
+              className="h-5 w-7 shrink-0 rounded"
+            />
             <span className="truncate text-xs font-extrabold whitespace-nowrap text-navy uppercase">
-              {order.type === "tunnel"
-                ? t("orderCard.tunnelOf", { name: tunnelTitle(order.product) })
-                : t("orderCard.vignetteOf", { country: countryName })}
+              {isPolicy
+                ? t("orderCard.greenCard")
+                : order.type === "tunnel"
+                  ? t("orderCard.tunnelOf", { name: tunnelTitle(order.product) })
+                  : t("orderCard.vignetteOf", { country: countryName })}
             </span>
           </span>
           <span className="flex items-center gap-2">
@@ -378,7 +398,11 @@ function OrderSummary({ order, theme }: { order: Order; theme: StatusTheme }) {
         </div>
         <div className="relative shrink-0">
           <span className="flex size-14 items-center justify-center rounded-full bg-brand-soft/60">
-            <Car className="size-8 text-[#5c7fd6]" strokeWidth={1.6} />
+            {order.type === "insurance" ? (
+              <ShieldCheck className="size-8 text-[#5c7fd6]" strokeWidth={1.6} />
+            ) : (
+              <Car className="size-8 text-[#5c7fd6]" strokeWidth={1.6} />
+            )}
           </span>
           <span
             className={cn(

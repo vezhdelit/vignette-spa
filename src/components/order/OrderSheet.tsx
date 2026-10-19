@@ -395,10 +395,11 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
             startDate === dayStart(0) ? Math.floor(Date.now() / 1000) : startDate,
           flex: { type: flexType, enabled: flexEnabled },
         },
+        // the Green Card in the cart is a product line of its own, so the
+        // preview's total includes it
+        ...(greenCard ? [{ ...greenCard.line, car: 0 }] : []),
       ],
       ...(/.+@.+\..+/.test(typedEmail) ? { email: typedEmail } : {}),
-      // the Green Card in the cart, so the preview's total includes it
-      ...(greenCard ? { insurance: [{ calculation_id: greenCard.calculation.calculation_id }] } : {}),
     }
   }, [
     greenCard,
@@ -736,17 +737,20 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
     // A Green Card calculation lives 30 minutes. One about to lapse is
     // refreshed here with the same inputs; if the insurer's price moved in
     // between, the new price is shown before anything is charged.
-    let insuranceEntry = greenCard?.entry ?? null
+    let insuranceLine = greenCard?.line ?? null
     if (greenCard && greenCard.calculation.expires_at - 60 < Math.floor(Date.now() / 1000)) {
       try {
         const fresh = await calculateGreenCard(greenCard.calculateBody)
         const refreshed: GreenCardDraft = {
           ...greenCard,
           calculation: fresh,
-          entry: { ...greenCard.entry, calculation_id: fresh.calculation_id },
+          line: {
+            ...greenCard.line,
+            insurance: { ...greenCard.line.insurance, calculation_id: fresh.calculation_id },
+          },
         }
         setGreenCard(refreshed)
-        insuranceEntry = refreshed.entry
+        insuranceLine = refreshed.line
         if (fresh.price !== greenCard.calculation.price) {
           toast.error(
             t("greenCard.priceChanged", { price: formatPrice(fresh.price, "EUR") }),
@@ -785,8 +789,6 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
           ],
           // the invoice's billing company, when asked for
           ...(company ? { company } : {}),
-          // the Green Card policy for the (one) car, when added
-          ...(insuranceEntry ? { insurance: [{ ...insuranceEntry, car: 0 }] } : {}),
           products: [
             {
               name: product.name,
@@ -798,6 +800,12 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
               // per attempt (services/partner-order.js#validatePartnerCustomIds)
               custom_id: crypto.randomUUID(),
             },
+            // the Green Card for the (one) car, when added: a product line
+            // of its own that becomes its own order row next to the vignette
+            // (docs/insurance/README.md), with its own custom_id
+            ...(insuranceLine
+              ? [{ ...insuranceLine, car: 0, custom_id: crypto.randomUUID() }]
+              : []),
           ],
           // the code the user applied; without one the server still picks the
           // best auto campaign for this order by itself

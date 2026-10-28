@@ -1182,15 +1182,22 @@ export interface StripeCheckoutMethod {
   return_url: string | null
 }
 
-/** The PayPal method: approve `order_id` with the JS SDK, then POST `capture`. */
+/**
+ * The PayPal method: approve `order_id` with the JS SDK, then POST `capture`.
+ * A sandbox checkout with no sandbox PayPal app behind it is `simulated`
+ * instead: no order, no SDK, `simulate` completes or declines it.
+ */
 export interface PayPalCheckoutMethod {
   provider: "paypal"
   integration: "paypal_js" | "paypal_sdk"
-  order_id: string
-  client_id: string
   environment: "live" | "sandbox"
+  order_id?: string
+  client_id?: string
   /** relative API path: POST /public/me/checkouts/:id/paypal/capture */
-  capture: string
+  capture?: string
+  simulated?: boolean
+  /** sandbox only: POST /public/me/checkouts/:id/simulate */
+  simulate?: string
 }
 
 /**
@@ -1281,6 +1288,8 @@ export interface CheckoutConfig {
     client_id?: string
     environment?: string
     pay_later?: boolean
+    /** sandbox PayPal without a sandbox PayPal app: every method is simulated */
+    simulated?: boolean
     app_link?: boolean
   }[]
   hosted: { embeddable: boolean }

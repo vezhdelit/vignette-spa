@@ -334,6 +334,14 @@ function PayPalPane({
     let buttons: { close: () => Promise<void> } | null = null
     const copy = (key: "payment.providerFailed") => latest.current.t(key, { provider: "PayPal" })
 
+    // a simulated sandbox method has no order and no SDK: the simulate
+    // panel below the pane is the whole flow
+    if (method.simulated || !method.client_id || !method.order_id) {
+      setState("ready")
+      return
+    }
+    const orderId = method.order_id
+
     loadScript({
       clientId: method.client_id,
       currency: "EUR",
@@ -347,7 +355,7 @@ function PayPalPane({
           style: { layout: "vertical", shape: "pill", label: "pay" },
           // the server minted the PayPal order with the checkout; the
           // buttons only approve it
-          createOrder: () => Promise.resolve(method.order_id),
+          createOrder: () => Promise.resolve(orderId),
           onApprove: async () => {
             setState("capturing")
             try {
@@ -381,10 +389,15 @@ function PayPalPane({
       void buttons?.close().catch(() => undefined)
     }
     // the buttons are bound to one PayPal order; a new order remounts the pane
-  }, [checkoutId, method.client_id, method.order_id])
+  }, [checkoutId, method.client_id, method.order_id, method.simulated])
 
   return (
     <div className="space-y-3">
+      {method.simulated && (
+        <p className="text-center text-[12px] font-medium text-navy-soft">
+          {t("payment.sandbox.title")}
+        </p>
+      )}
       {(state === "loading" || state === "capturing") && (
         <div className="flex items-center justify-center gap-2 py-3 text-[14px] font-semibold text-navy-soft">
           <Spinner className="size-5 text-brand" />

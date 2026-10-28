@@ -12,16 +12,17 @@ import { formatCents } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { useT } from "@/i18n"
 import { useCancelTopUp, useCreateTopUp, useTopUp } from "@/queries/wallet"
-import type { Wallet } from "@/types/api"
+import type { Checkout, Wallet } from "@/types/api"
 
 /**
  * Topping the wallet up — the same shape as buying a vignette: one drawer
  * with steps, and the checkout itself rendered by the very same
  * `PaymentModal` the order flow uses.
  *
- * What is embedded is the server's own hosted page (`payment_link`), which
- * mounts Stripe, PayPal and Monobank itself. That is why this app needs no
- * payment SDK at all — it opens a URL, exactly as it does for an order.
+ * The create call answers a `checkout` block (kind "top_up") — the same
+ * shape an order gets, so the native sheet (Stripe Payment Element, PayPal,
+ * Monobank) renders it unchanged, with the server's hosted page
+ * (`payment_link`) as the fallback.
  *
  * Nothing here decides that money arrived. `useTopUp` polls, the server
  * reconciles with the provider on every poll, and the success step follows
@@ -52,6 +53,7 @@ export function TopUpDrawer({
   const [custom, setCustom] = useState("")
   const [topUpId, setTopUpId] = useState<number | null>(null)
   const [paymentLink, setPaymentLink] = useState<string | null>(null)
+  const [checkout, setCheckout] = useState<Checkout | null>(null)
 
   const createTopUp = useCreateTopUp()
   const cancelTopUp = useCancelTopUp()
@@ -90,6 +92,7 @@ export function TopUpDrawer({
       const result = await createTopUp.mutateAsync(amount)
       setTopUpId(result.id)
       setPaymentLink(result.payment_link)
+      setCheckout(result.checkout ?? null)
       setStep("paying")
       // The amount is chosen and the checkout is about to open. `preset`
       // says whether a suggested tier was tapped or a figure typed, which is
@@ -129,6 +132,7 @@ export function TopUpDrawer({
     setStep("amount")
     setTopUpId(null)
     setPaymentLink(null)
+    setCheckout(null)
     setCustom("")
     onClose()
   }
@@ -139,7 +143,16 @@ export function TopUpDrawer({
         <DrawerTitle className="sr-only">{t("account.wallet.topUp")}</DrawerTitle>
 
         {step === "paying" && !paid && (
-          <PaymentModal paymentLink={paymentLink} onClose={close} />
+          <PaymentModal
+            checkout={checkout}
+            paymentLink={paymentLink}
+            onClose={close}
+            // a decline in the native sheet: the top-up stays open for a
+            // retry; counted with its own reason, apart from an abandonment
+            onAttemptFailed={(reason) =>
+              track("wallet.topup_failed", { amount_eur: eur(amount), reason })
+            }
+          />
         )}
 
         {step === "paying" && paid && (

@@ -8,7 +8,9 @@ Vignettes / Support / Account tabs, buy flow, order management) on top of the
 **Stack:** Vite + React 19 + TypeScript · TanStack Query (server state) ·
 Zustand (auth session + device preferences) · Tailwind CSS v4 · shadcn/ui
 (radix preset) · react-router v7 · sonner (toasts) · lucide icons · i18n with
-no dependency (`Intl` + a dictionary, see below).
+no dependency (`Intl` + a dictionary, see below) · `@stripe/react-stripe-js`
+(the Payment Element) and `@paypal/paypal-js` (the PayPal buttons) for the
+native checkout.
 
 ## Run
 
@@ -184,7 +186,8 @@ client reads it synchronously to sign requests.
 | Sessions | `GET auth/sessions` | Account → Devices & sessions |
 | Profile | `GET /public/me` | Account header |
 | Orders | `GET /public/me/orders` (page/status/scope), `GET orders/:id`, `GET orders/:id/status` | Home tab (+ pagination); `:id/status` is the 4s checkout poll |
-| Buy | `POST /public/me/orders` (+ `?allow_duplication` retry) → `payment_link` | order sheet (2-step) |
+| Buy | `POST /public/me/orders` (+ `?allow_duplication` retry, `checkout: { platform: "web" }`) → `checkout` + `payment_link` | order sheet (2-step) |
+| Native checkout | `GET /public/me/checkouts/:id` (2s poll while open), `POST …/sync`, `…/monobank`, `…/paypal/capture`, `…/simulate` (sandbox); `GET /public/checkout/config` | `components/checkout/NativeCheckout` inside the payment modal: the Stripe Payment Element (Apple Pay / Google Pay / Link inside), the PayPal buttons, Monobank in a new tab; the hosted `payment_link` iframe is the fallback when `native_checkout` is off or no method could be built. The same component pays wallet top-ups (`kind: "top_up"`) and resumes an "Awaiting payment" order (the checkout id is the `payment_link`'s last segment) |
 | Modify / refund / transfer | `POST orders/:id/{modify,refund,transfer}` | expanded order card |
 | Wallet / referrals / vehicles | `GET wallet`, `referrals`, `vehicles` | Account sections (wallet/income are **integer cents**); `vehicles` is guest-ok — a guest gets the plates from its own orders, with string ids `"<country>:<plate>"` — and feeds the order sheet's saved-plate chips |
 | Notifications | `GET notifications?mark_read=true` (paginated; opening the inbox is what marks it read), `GET notifications/summary` (unread badge, polled every 60s), `POST notifications/:id/read`, `:id/unread`, `mark-all-read` | header bell → `/notifications` page; Account → Notifications section (same list); rows render in the UI language from `data.loc` (see Languages) |
@@ -208,7 +211,9 @@ unique per partner; the create response's `orders[]` are slim stubs (`id`,
 refresh is single-flight and never retried with the same
 token after a lost response (rotation reuse revokes the family); per-period
 restrictions `vin_code_required` (9/17 alnum), `driver_info_required`
-(`user.user_name`/`passport_number`/`passport_country`), `from-tomorrow`
+(`user.user_name`/`passport_number`/`passport_country` — Latin script only,
+at least two name words, `src/lib/driver-info.ts` mirrors the server's
+`invalid_user_data` check under the fields as they are typed), `from-tomorrow`
 (TODAY disabled) and `disabled` (period hidden); `CREATED` = awaiting payment
 (distinct card, never "processing"); `end_date` may be the string
 `"YYYY-MM-DD 23:59"`; MD vignette + MD plate blocked client-side;
@@ -253,14 +258,35 @@ restrictions `vin_code_required` (9/17 alnum), `driver_info_required`
   struck through, otherwise the euro line under the total quotes what will be
   charged. A `promo_*` rejection at checkout drops the code and leaves the
   user on step 2 able to pay without it.
-- `PAY` posts the order and renders `payment_link` in an **in-sheet iframe
-  modal** (the pay page ships `Content-Security-Policy: frame-ancestors *`
-  for exactly this embedded use), while polling the slim
-  `GET /public/me/orders/:id/status` every 4s in the background; the moment
-  the status leaves `CREATED` the modal is replaced by the "Payment received"
-  screen and the full order is fetched once via the list invalidation. Closing the modal abandons checkout (the order stays `CREATED` and
-  shows as "Awaiting payment" on Home). An open-in-browser fallback sits in
-  the modal header.
+- `PAY` posts the order with `checkout: { platform: "web" }` and renders the
+  `checkout` block it gets back in the **in-sheet payment modal**
+  (`components/order/PaymentDrawer` → `components/checkout/NativeCheckout`,
+  `vignette.id/docs/checkout/README.md`): one tab per method in
+  `checkout.methods[]` — the Stripe Payment Element confirmed against the
+  same PaymentIntent the hosted page uses (its `publishable_key` comes from
+  the block, never from config: it names the Stripe account that owns the
+  intent), the PayPal buttons approving the server-minted order and then
+  `POST …/paypal/capture`, and Monobank opened in a new tab from
+  `POST …/monobank`. The checkout is polled every 2s while open
+  (`GET /public/me/checkouts/:id` reconciles the providers server-side, so a
+  confirmed card lands without a webhook); the slim
+  `GET /public/me/orders/:id/status` is polled every 4s alongside, and the
+  moment the order leaves `CREATED` the modal is replaced by the "Payment
+  received" screen and the full order is fetched once via the list
+  invalidation. The hosted `payment_link` stays as the fallback — rendered
+  in the iframe (the pay page ships `Content-Security-Policy:
+  frame-ancestors *` for exactly this) when `native_checkout` is off or no
+  method could be built, and linked under the sheet otherwise. In sandbox
+  the sheet also offers to simulate the active method's success or decline
+  (`POST …/simulate`). Closing the modal abandons checkout (the order stays
+  `CREATED` and shows as "Awaiting payment" on Home — reopening it resumes
+  the same checkout with fresh secrets). A decline inside the sheet is
+  reported as `checkout.payment_failed` with `reason: "declined"` /
+  `"provider_error"`; a close without paying stays `"closed_unpaid"`.
+  Monobank's `return_url` is only sent when this app's host is on the auth
+  client's `checkout_config.return_url_allowlist` (read from
+  `GET /public/checkout/config`); otherwise the buyer returns to the hosted
+  page and this app's poll still sees the payment.
 - Home polls the orders list every 20s while any order is CREATED/PENDING
   (the "Processing (~15m)" card) so it flips to active on its own.
 

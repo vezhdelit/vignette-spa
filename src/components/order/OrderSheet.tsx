@@ -119,8 +119,10 @@ import {
   useValidateVehicles,
 } from "@/queries/vehicles"
 import { cn } from "@/lib/utils"
+import { findInvalidDriverInfo } from "@/lib/driver-info"
 import type {
   CatalogProduct,
+  Checkout,
   PlateType,
   PromoValidateResult,
   VehicleLookup,
@@ -250,6 +252,10 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   const [promoError, setPromoError] = useState<string | null>(null)
   const [promoChecking, setPromoChecking] = useState(false)
   const [paymentLink, setPaymentLink] = useState<string | null>(null)
+  // the checkout block the create call answered: the native sheet's seed
+  const [checkout, setCheckout] = useState<Checkout | null>(null)
+  // the server's verdict on the driver fields (`invalid_user_data`)
+  const [driverError, setDriverError] = useState<string | null>(null)
   // Pay (part of) this order from the wallet. Signed-in sessions only — a
   // guest has no wallet — and only while the server says the feature is on.
   const [useWalletBalance, setUseWalletBalance] = useState(false)
@@ -308,6 +314,8 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
       setPeriod(periods[0] ?? null)
       setStartDate(dayStart(0))
       setPaymentLink(null)
+      setCheckout(null)
+      setDriverError(null)
       setCreatedOrder(null)
       setDuplicateWarning(null)
       setPlateError(null)
@@ -613,6 +621,23 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
         })
       : null
 
+  // The registry reads the passport's machine-readable zone, so the name
+  // and number must be Latin script (lib/driver-info.ts mirrors the
+  // server's check): said under the field as it is typed, not at checkout.
+  const driverProblem = driverInfoRequired
+    ? findInvalidDriverInfo({
+        fullName: driver.user_name,
+        passportNumber: driver.passport_number,
+      })
+    : null
+  const driverProblemText =
+    driverError ??
+    (driverProblem === "latin_name"
+      ? t("order.driverNameLatin")
+      : driverProblem === "latin_passport"
+        ? t("order.passportLatin")
+        : null)
+
   // plates must be ≥3 chars with a country (helpers/vehicle.js#checkCars) and
   // pass that country's format rules; the server re-validates either way
   const canProceed =
@@ -626,7 +651,8 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
         driver.user_name.trim() &&
           driver.passport_number.trim() &&
           driver.passport_country
-      ))
+      )) &&
+    driverProblem === null
 
   // "Moldovan vignette is not required for a Moldovan vehicle plate"
   const mdOnMd = product.country === "md" && plateCountry === "md"
@@ -770,6 +796,9 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
         allowDuplication: options.allowDuplication,
         body: {
           terms_and_privacy_accepted: true,
+          // the payment is collected in this app's own sheet (the Stripe
+          // Payment Element, the PayPal buttons) — web-shaped method blocks
+          checkout: { platform: "web" },
           // ties this browser's web push registration (if any — see
           // AccountPage's Push notifications section) to the order's status
           // alerts, even when it registered signed-out
@@ -871,6 +900,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
       if (result.payment?.status === "paid") {
         void invalidateWallet()
         setPaymentLink(null)
+        setCheckout(null)
         setStep("paid")
         return
       }
@@ -891,9 +921,11 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
         { product: product.name, ...(created?.id ? { order_id: created.id } : {}) },
       )
 
-      // shown in an in-sheet iframe (the pay page ships
-      // `frame-ancestors *` exactly for this embedded-webview use)
+      // the native sheet renders `checkout.methods[]`; the hosted page
+      // (`payment_link`, shown in an in-sheet iframe — it ships
+      // `frame-ancestors *` for exactly this) remains the fallback
       setPaymentLink(result.payment_link ?? null)
+      setCheckout(result.checkout ?? null)
       setStep("paying")
     } catch (e) {
       if (
@@ -915,6 +947,13 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
         // offender) — shown under the form, the order stays as typed
         setCompanyError(e.message)
         toast.error(e.message)
+      } else if (e instanceof ApiRequestError && e.type === "invalid_user_data") {
+        // the server's own verdict on the driver fields (missing, or not in
+        // Latin script) — shown under them, back on the step that holds them
+        setDriverError(e.message)
+        toast.error(e.message)
+        setStep("order")
+        return
       } else if (
         e instanceof ApiRequestError &&
         (e.type === "invalid_insurance" ||
@@ -997,7 +1036,23 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
 
         {step === "creating" && <CreatingScreen />}
         {step === "paying" && !paid && (
-          <PaymentModal paymentLink={paymentLink} onClose={finish} />
+          <PaymentModal
+            checkout={checkout}
+            paymentLink={paymentLink}
+            onClose={finish}
+            // a decline inside the native sheet: the order stays payable and
+            // the attempt is on record with its reason, apart from a close
+            onAttemptFailed={(reason) =>
+              track(
+                "checkout.payment_failed",
+                { reason },
+                {
+                  product: product.name,
+                  ...(createdOrder?.id ? { order_id: createdOrder.id } : {}),
+                },
+              )
+            }
+          />
         )}
         {step === "paying" && paid && <DoneScreen onFinish={finish} />}
         {step === "paid" && <DoneScreen onFinish={finish} />}
@@ -1343,22 +1398,31 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                       </p>
                       <Input
                         value={driver.user_name}
-                        onChange={(e) =>
+                        onChange={(e) => {
                           setDriver((d) => ({ ...d, user_name: e.target.value }))
-                        }
+                          setDriverError(null)
+                        }}
                         placeholder={t("order.driverName")}
                         aria-label={t("order.driverName")}
+                        aria-invalid={driverProblem === "latin_name" || undefined}
                         className={FIELD}
                       />
                       <Input
                         value={driver.passport_number}
-                        onChange={(e) =>
+                        onChange={(e) => {
                           setDriver((d) => ({ ...d, passport_number: e.target.value }))
-                        }
+                          setDriverError(null)
+                        }}
                         placeholder={t("order.passportNumber")}
                         aria-label={t("order.passportNumber")}
+                        aria-invalid={driverProblem === "latin_passport" || undefined}
                         className={FIELD}
                       />
+                      {driverProblemText && (
+                        <p className="text-[13px] leading-snug font-semibold text-pink">
+                          {driverProblemText}
+                        </p>
+                      )}
                       <Select
                         value={driver.passport_country}
                         onValueChange={(v) =>

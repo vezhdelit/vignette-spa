@@ -208,10 +208,9 @@ export interface WalletTransaction {
 }
 
 /**
- * The Stripe block a NATIVE payment sheet would confirm. This app does not
- * use it: the server also returns `payment_link`, a hosted page that mounts
- * Stripe, PayPal and Monobank itself, so the SPA embeds that in an iframe
- * exactly as it embeds an order's checkout and needs no Stripe SDK at all.
+ * The raw Stripe intent of a top-up. Superseded by `checkout.methods[]`
+ * (the same intent, plus PayPal and Monobank) — kept on the wire for older
+ * clients; this app reads `checkout`.
  */
 export interface TopUpPayment {
   provider: "stripe"
@@ -241,8 +240,14 @@ export interface TopUp {
    * there is nothing left to pay.
    */
   payment_link: string | null
-  /** the raw Stripe intent, for native sheets; unused here */
+  /** the raw Stripe intent; `checkout` carries the same and more */
   payment?: TopUpPayment | null
+  /**
+   * The checkout object (kind "top_up", id `topup_<token>`): the hosted page
+   * and every native method, exactly as an order's. Null once there is
+   * nothing left to pay.
+   */
+  checkout?: Checkout | null
   /** poll and cancel: the balances after whatever this call did */
   wallet?: Pick<Wallet, "balance" | "bonuses" | "total" | "currency">
 }
@@ -658,6 +663,12 @@ export interface OrderStatus {
   custom_id: string | null
   status: OrderStatusLabel
   payment_link?: string
+  /**
+   * While CREATED: the checkout behind the order, by id and state only (a
+   * row read, no provider calls) — enough to resume it through
+   * GET /public/me/checkouts/:id.
+   */
+  checkout?: { id: string; status: CheckoutStatus } | null
 }
 
 export interface OrderChange {
@@ -712,6 +723,15 @@ export interface CreateOrderBody {
   products: (CreateOrderProduct | GreenCardProductLine)[]
   allowed_payment_providers?: string[]
   open_order_details_by_default?: boolean
+  /**
+   * How this client will collect the payment (docs/checkout/README.md). All
+   * optional; `platform` shapes the method blocks (web → Stripe `elements`,
+   * PayPal `paypal_js`), `return_url` is where a redirect method comes back
+   * to and must be a URL on vignette.id, a custom scheme, or a host on the
+   * client's allowlist — anything else is `400 invalid_return_url` before
+   * any order is written.
+   */
+  checkout?: CheckoutPrefs
   email?: string
   installation_id?: string
   /**
@@ -803,6 +823,13 @@ export interface CreateOrderResult {
    * response; `wallet` is null unless the request asked to use it.
    */
   payment?: OrderPaymentSummary
+  /**
+   * The checkout object: the hosted page (`hosted.url` = `payment_link`)
+   * and every native method in one block, or an already `paid` one when the
+   * wallet or a promo covered the batch. Null only when it could not be
+   * built — the hosted link always remains.
+   */
+  checkout?: Checkout | null
   /** the policies just created, one per Green Card line, each naming its own order */
   insurance?: Policy[]
 }
@@ -1106,4 +1133,158 @@ export interface PlateRuleVector {
 export interface PlateRuleVectors {
   version: string
   vectors: PlateRuleVector[]
+}
+
+/* -------------------------------------------------------------- checkout */
+
+/**
+ * Native checkout (docs/checkout/README.md): every payable — an order batch
+ * or a wallet top-up — answers with one `checkout`, and the
+ * /public/me/checkouts/:id routes drive it. Cents and unix seconds, like
+ * the wallet.
+ */
+export type CheckoutStatus =
+  | "open"
+  | "processing"
+  | "paid"
+  | "expired"
+  | "canceled"
+  | "paid_late"
+
+/** `checkout` on POST /public/me/orders — the client's collection preferences. */
+export interface CheckoutPrefs {
+  platform?: "ios" | "android" | "web"
+  /** informational today; default "both" */
+  collect?: "native" | "hosted" | "both"
+  /** where redirect methods (Monobank) come back to; see CreateOrderBody */
+  return_url?: string
+}
+
+/**
+ * The Stripe method: the SAME PaymentIntent the hosted page confirms, for
+ * the Payment Element (web). `publishable_key` belongs to the Stripe account
+ * that owns the intent — always use the key from the block, never a
+ * hardcoded one. The customer session is short-lived (minutes), so a sheet
+ * is built from a fresh read, never from a cached block.
+ */
+export interface StripeCheckoutMethod {
+  provider: "stripe"
+  integration: "elements" | "payment_sheet"
+  publishable_key: string | null
+  client_secret: string
+  payment_intent_id: string
+  customer_id: string | null
+  customer_session_client_secret: string | null
+  customer_ephemeral_key_secret: string | null
+  merchant_display_name: string
+  apple_pay: { merchant_id: string; country: string } | null
+  google_pay: { environment: "test" | "production"; country: string }
+  return_url: string | null
+}
+
+/** The PayPal method: approve `order_id` with the JS SDK, then POST `capture`. */
+export interface PayPalCheckoutMethod {
+  provider: "paypal"
+  integration: "paypal_js" | "paypal_sdk"
+  order_id: string
+  client_id: string
+  environment: "live" | "sandbox"
+  /** relative API path: POST /public/me/checkouts/:id/paypal/capture */
+  capture: string
+}
+
+/**
+ * The Monobank method: POST `create` mints the invoice, open `page_url` (or
+ * `app_url` with the mono app). Sandbox has no Monobank merchant, so the
+ * method is `simulated` and `simulate` completes or declines it instead.
+ */
+export interface MonobankCheckoutMethod {
+  provider: "monobank"
+  integration: "redirect"
+  /** relative API path: POST /public/me/checkouts/:id/monobank */
+  create: string
+  app_link?: boolean
+  simulated?: boolean
+  /** sandbox only: POST /public/me/checkouts/:id/simulate */
+  simulate?: string
+}
+
+export type CheckoutMethod =
+  | StripeCheckoutMethod
+  | PayPalCheckoutMethod
+  | MonobankCheckoutMethod
+
+export interface CheckoutAttempt {
+  provider: string
+  integration: string
+  platform: string | null
+  status: "created" | "processing" | "failed" | "paid" | "canceled"
+  failure_code: string | null
+  failure_message: string | null
+  paid_with: string | null
+  created_at: number
+}
+
+export interface Checkout {
+  /** order batch: the batch custom_id (= the /pay URL's last segment); top-up: "topup_<token>" */
+  id: string
+  kind: "order_batch" | "top_up"
+  status: CheckoutStatus
+  env: "live" | "sandbox"
+  amount: {
+    total: number
+    due: number
+    currency: string
+    wallet: { applied: number; from_balance: number; from_bonuses: number } | null
+    /** top-ups: the bonus the wallet credits with the amount */
+    bonus?: number
+  }
+  /** unix seconds; the link stops taking money after it */
+  expires_at: number | null
+  /** public order ids behind it ([] for a top-up) */
+  orders: string[]
+  hosted: { url: string; embeddable: boolean } | null
+  /** [] once not open, or with native checkout switched off */
+  methods: CheckoutMethod[]
+  paid_with: string | null
+  paid_at: number | null
+  attempts: CheckoutAttempt[]
+  /** relative API path of the poll; null when there is nothing to poll */
+  poll: string | null
+  /** false = render `hosted.url` only (kill switch) */
+  native_checkout: boolean
+}
+
+/** POST /public/me/checkouts/:id/monobank */
+export interface MonobankInvoice {
+  invoice_id: string
+  page_url: string
+  app_url: string | null
+  expires_at: number
+  simulated: boolean
+}
+
+/** GET /public/checkout/config — client-scoped, what to initialise at launch. */
+export interface CheckoutConfig {
+  env: "live" | "sandbox"
+  currency: string
+  platform: "ios" | "android" | "web"
+  providers: {
+    id: "stripe" | "paypal" | "monobank" | "wallet"
+    integrations: string[]
+    enabled: boolean
+    publishable_key?: string
+    merchant_display_name?: string
+    apple_pay?: { merchant_id: string; country: string } | null
+    google_pay?: { environment: string; country: string }
+    wallets?: string[]
+    client_id?: string
+    environment?: string
+    pay_later?: boolean
+    app_link?: boolean
+  }[]
+  hosted: { embeddable: boolean }
+  native_checkout: boolean
+  /** which return_url values the client may send: custom schemes, and these hosts */
+  return_url: { custom_schemes: boolean; hosts: string[] }
 }

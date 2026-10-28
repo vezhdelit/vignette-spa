@@ -52,7 +52,7 @@ import {
   useValidateVehicles,
 } from "@/queries/vehicles"
 import { cn } from "@/lib/utils"
-import type { GreenCardCatalog, PromoValidateResult, VehicleLookup } from "@/types/api"
+import type { Checkout, GreenCardCatalog, PromoValidateResult, VehicleLookup } from "@/types/api"
 
 /** The product line's name on POST /public/me/orders (services/insurance-products.js). */
 const PRODUCT = "green-card"
@@ -111,6 +111,8 @@ export function PolicyOrderSheet({
   const [promoChecking, setPromoChecking] = useState(false)
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null)
   const [paymentLink, setPaymentLink] = useState<string | null>(null)
+  // the checkout block the create call answered: the native sheet's seed
+  const [checkout, setCheckout] = useState<Checkout | null>(null)
   const [createdOrder, setCreatedOrder] = useState<{ id: string } | null>(null)
   const plateAttempts = useRef(0)
 
@@ -131,6 +133,7 @@ export function PolicyOrderSheet({
     setPromoError(null)
     setDuplicateWarning(null)
     setPaymentLink(null)
+    setCheckout(null)
     setCreatedOrder(null)
     setTerms(true)
     plateAttempts.current = 0
@@ -290,6 +293,9 @@ export function PolicyOrderSheet({
         body: {
           terms_and_privacy_accepted: true,
           ...(installationId ? { installation_id: installationId } : {}),
+          // the payment is collected in this app's own sheet (the Stripe
+          // Payment Element, the PayPal buttons) — web-shaped method blocks
+          checkout: { platform: "web" },
           cars: [{ plate: plate.trim().toUpperCase().replace(/\s+/g, ""), country: plateCountry }],
           // the one product line: the policy itself (name "green-card"),
           // with the fresh custom_id every unpaid order needs
@@ -310,6 +316,7 @@ export function PolicyOrderSheet({
       // a 100% promo: nothing to pay, the order is already PENDING
       if (result.payment?.status === "paid") {
         setPaymentLink(null)
+        setCheckout(null)
         setStep("paid")
         return
       }
@@ -319,6 +326,7 @@ export function PolicyOrderSheet({
         { product: PRODUCT, ...(created?.id ? { order_id: created.id } : {}) },
       )
       setPaymentLink(result.payment_link ?? null)
+      setCheckout(result.checkout ?? null)
       setStep("paying")
     } catch (e) {
       if (
@@ -394,7 +402,22 @@ export function PolicyOrderSheet({
             <p className="text-xl font-semibold text-white">{t("order.creating")}</p>
           </div>
         )}
-        {step === "paying" && !paid && <PaymentModal paymentLink={paymentLink} onClose={finish} />}
+        {step === "paying" && !paid && (
+          <PaymentModal
+            checkout={checkout}
+            paymentLink={paymentLink}
+            onClose={finish}
+            // a decline inside the native sheet: the order stays payable,
+            // the attempt is on record with its reason
+            onAttemptFailed={(reason) =>
+              track(
+                "checkout.payment_failed",
+                { reason },
+                { product: PRODUCT, ...(createdOrder?.id ? { order_id: createdOrder.id } : {}) },
+              )
+            }
+          />
+        )}
         {step === "paying" && paid && <DoneScreen kind="policy" onFinish={finish} />}
         {step === "paid" && <DoneScreen kind="policy" onFinish={finish} />}
 

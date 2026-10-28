@@ -4,24 +4,54 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer"
 import { Spinner } from "@/components/ui/spinner"
+import { NativeCheckout } from "@/components/checkout/NativeCheckout"
 import { useT } from "@/i18n"
+import { checkoutIdFromPaymentLink, useCheckout } from "@/queries/checkout"
 import { useInvalidateOrders, usePaymentStatus } from "@/queries/orders"
 import { notePurchaseCompleted } from "@/stores/rating"
+import type { Checkout, CheckoutMethod } from "@/types/api"
 
 /**
- * In-sheet checkout: the payment page rendered in an iframe (it ships
- * `Content-Security-Policy: frame-ancestors *` for exactly this embedded
- * use). The caller runs the order-status poll and swaps this for the success
- * screen; closing while the order is still CREATED is the abandon signal.
+ * In-sheet checkout. Given the `checkout` object a create call answered (or
+ * the id of one to resume), it polls `GET /public/me/checkouts/:id` and
+ * renders the native sheet — the Stripe Payment Element, the PayPal buttons,
+ * Monobank — with the hosted page as the fallback: when native checkout is
+ * switched off, when no method could be built, or while the checkout is
+ * still loading its methods. The caller runs the order-status / top-up poll
+ * and swaps this for the success screen; closing while the order is still
+ * CREATED is the abandon signal (the order stays payable from Home).
  */
 export function PaymentModal({
+  checkout = null,
+  checkoutId = null,
   paymentLink,
   onClose,
+  onAttemptFailed,
 }: {
+  /** the block the create call answered — seeds the poll */
+  checkout?: Checkout | null
+  /** resume by id (an "Awaiting payment" card) when there is no block in hand */
+  checkoutId?: string | null
   paymentLink: string | null
   onClose: () => void
+  onAttemptFailed?: (reason: string, provider: CheckoutMethod["provider"]) => void
 }) {
   const { t } = useT()
+  const id = checkout?.id ?? checkoutId ?? checkoutIdFromPaymentLink(paymentLink)
+  const live = useCheckout(id, { initial: checkout })
+  const current = live.data ?? checkout
+  const terminal =
+    current && ["expired", "canceled", "paid_late"].includes(current.status)
+      ? (current.status as "expired" | "canceled" | "paid_late")
+      : null
+  const native =
+    current !== null &&
+    current.native_checkout &&
+    current.methods.length > 0 &&
+    (current.status === "open" || current.status === "processing")
+  // nothing native to offer and nothing on the way: the hosted page it is
+  const hosted = !native && !terminal && (current !== null || live.isError || !id)
+
   return (
     <div className="flex h-[90dvh] flex-col">
       <div className="flex items-center justify-between px-4 pt-1 pb-3">
@@ -51,23 +81,49 @@ export function PaymentModal({
         )}
       </div>
 
-      {paymentLink ? (
-        <iframe
-          src={paymentLink}
-          title={t("payment.frameTitle")}
-          allow="payment *; clipboard-write"
-          className="w-full flex-1 rounded-t-[20px] border-0 bg-white"
-        />
-      ) : (
-        <div className="flex flex-1 items-center justify-center">
-          <Spinner className="size-12 text-white" />
-        </div>
-      )}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {terminal ? (
+          <div className="px-4">
+            <Alert className="rounded-2xl border-0 bg-white text-left">
+              <TriangleAlert className="size-5" />
+              <AlertDescription className="font-semibold text-navy">
+                {terminal === "expired"
+                  ? t("payment.expired")
+                  : terminal === "canceled"
+                    ? t("payment.canceled")
+                    : t("payment.paidLate")}
+              </AlertDescription>
+            </Alert>
+          </div>
+        ) : native && current ? (
+          <NativeCheckout
+            checkout={current}
+            paymentLink={paymentLink ?? current.hosted?.url ?? null}
+            onAttemptFailed={onAttemptFailed}
+          />
+        ) : hosted && paymentLink ? (
+          // the pay page ships `Content-Security-Policy: frame-ancestors *`
+          // for exactly this embedded use
+          <iframe
+            src={paymentLink}
+            title={t("payment.frameTitle")}
+            allow="payment *; clipboard-write"
+            className="h-full w-full rounded-t-[20px] border-0 bg-white"
+          />
+        ) : (
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-white">
+            <Spinner className="size-12 text-white" />
+            <p className="text-[14px] font-semibold text-white/85">{t("payment.loading")}</p>
+          </div>
+        )}
+      </div>
 
-      <p className="flex items-center justify-center gap-2 px-4 py-2.5 text-center text-xs font-semibold text-white/85">
-        <Spinner className="size-3" />
-        {t("payment.waiting")}
-      </p>
+      {!terminal && (
+        <p className="flex items-center justify-center gap-2 px-4 py-2.5 text-center text-xs font-semibold text-white/85">
+          <Spinner className="size-3" />
+          {t("payment.waiting")}
+        </p>
+      )}
     </div>
   )
 }
@@ -114,8 +170,10 @@ export function DoneScreen({
 /**
  * Standalone re-checkout drawer for an existing unpaid (CREATED) order —
  * Home's "Awaiting payment" cards open this with the order's own
- * `payment_link` (returned on reads for CREATED orders). Polls the order
- * every 4s and flips to the success screen the moment payment lands.
+ * `payment_link` (returned on reads for CREATED orders). The checkout id is
+ * the link's last segment, so the native sheet resumes with fresh secrets
+ * from `GET /public/me/checkouts/:id`; the order is polled every 4s and the
+ * drawer flips to the success screen the moment payment lands.
  */
 export function PaymentDrawer({
   orderId,
@@ -152,7 +210,7 @@ export function PaymentDrawer({
         {paid ? (
           <DoneScreen onFinish={finish} />
         ) : (
-          <PaymentModal paymentLink={paymentLink} onClose={onClose} />
+          open && <PaymentModal paymentLink={paymentLink} onClose={onClose} />
         )}
       </DrawerContent>
     </Drawer>

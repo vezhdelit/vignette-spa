@@ -378,6 +378,32 @@ export const en = {
   "payment.receivedPolicyBody":
     "The insurer is writing your Green Card — usually within minutes. The documents appear on the order.",
   "payment.goToOrders": "Go to my orders",
+  "payment.loading": "Preparing the payment…",
+  "payment.amountDue": "To pay",
+  "payment.method.card": "Card",
+  "payment.method.paypal": "PayPal",
+  "payment.method.monobank": "monobank",
+  "payment.payAmount": "Pay {amount}",
+  "payment.confirming": "Confirming your payment…",
+  "payment.declined": "The payment was declined. Try another card or another method.",
+  "payment.providerFailed": "{provider} could not complete the payment. Try again or pick another method.",
+  "payment.cardNote": "Apple Pay, Google Pay and Link are inside the card form when your device offers them.",
+  "payment.monobank.open": "Pay in monobank",
+  "payment.monobank.opened":
+    "monobank opened in a new tab. This screen confirms the payment by itself once it lands.",
+  "payment.monobank.check": "I've paid — check now",
+  "payment.hosted.open": "Open the payment page",
+  "payment.hosted.note": "The payment page offers every method, in a new tab.",
+  "payment.expired": "This payment has expired. Start the order again.",
+  "payment.canceled": "This payment was cancelled.",
+  "payment.paidLate": "The money arrived after the deadline — our team will sort it out and get in touch.",
+  "payment.sandbox.title": "Sandbox — no real money moves",
+  "payment.sandbox.success": "Simulate a successful payment",
+  "payment.sandbox.failure": "Simulate a decline",
+  "order.driverNameLatin":
+    "Enter the first and last name in Latin letters, exactly as printed in the passport",
+  "order.passportLatin":
+    "The passport number can contain only Latin letters and digits, as printed in the passport",
   "market.title": "Market",
   "market.subtitle": "Insurance and services for the road, bought on their own — no vignette needed.",
   "market.greenCard.body":

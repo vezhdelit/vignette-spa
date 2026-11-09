@@ -26,6 +26,16 @@ export const en = {
   "nav.support": "Support",
   "nav.account": "Account",
   "nav.market": "Market",
+
+  /* --------------------------------------------- saved travel documents */
+  "documents.saved": "Saved documents",
+  "documents.remove": "Remove this document",
+  "documents.empty": "No saved documents yet. A passport you enter for an order or a policy is kept here.",
+  "documents.type.label": "Document",
+  "documents.type.foreign_passport": "Foreign passport",
+  "documents.type.internal_passport": "Ukrainian passport",
+  "documents.type.id_card": "ID card",
+  "account.section.documents": "Saved documents",
   "bell.label": "Notifications",
   "bell.labelUnread": "Notifications, {count} unread",
 

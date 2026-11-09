@@ -120,6 +120,8 @@ import {
 } from "@/queries/vehicles"
 import { cn } from "@/lib/utils"
 import { findInvalidDriverInfo } from "@/lib/driver-info"
+import { useDeleteDocument, useSaveDocument, useSavedDocumentsOf } from "@/queries/documents"
+import { SavedDocumentPicker } from "@/components/order/SavedDocuments"
 import type {
   CatalogProduct,
   Checkout,
@@ -181,6 +183,12 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   // the card will really be charged.
   const eurCatalog = useCatalog("EUR").data ?? EMPTY_CATALOG
   const createOrder = useCreateOrder()
+  // the account's saved foreign passports, for the Moldova driver details
+  // (vignette.id docs/documents/README.md); nothing for a guest
+  const savedPassports = useSavedDocumentsOf(["foreign_passport"])
+  const saveDocument = useSaveDocument()
+  const deleteDocument = useDeleteDocument()
+  const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null)
   const invalidateOrders = useInvalidateOrders()
   // An invite code this visitor arrived with, for the one case an order can
   // use it: a guest checkout that creates the account (see stores/invite.ts).
@@ -792,6 +800,22 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
     }
     try {
       const installationId = getInstallationId()
+      // the driver details are kept for the next order (signed-in accounts):
+      // the foreign passport typed above, before the order goes out (a failed
+      // save never blocks it)
+      if (driverInfoRequired && !isGuest) {
+        const [first, ...rest] = driver.user_name.trim().split(/\s+/)
+        await saveDocument
+          .mutateAsync({
+            document_type: "foreign_passport",
+            country: driver.passport_country || "ua",
+            number: driver.passport_number.trim(),
+            first_name: first || null,
+            last_name: rest.join(" ") || null,
+            source: "moldova",
+          })
+          .catch(() => null)
+      }
       const result = await createOrder.mutateAsync({
         allowDuplication: options.allowDuplication,
         body: {
@@ -1396,6 +1420,20 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                       <p className="text-lg font-extrabold tracking-wide text-navy uppercase">
                       {t("order.driverDetails")}
                       </p>
+                      <SavedDocumentPicker
+                        documents={savedPassports.documents}
+                        selectedId={selectedDocumentId}
+                        onSelect={(document) => {
+                          setSelectedDocumentId(document.id)
+                          setDriver({
+                            user_name: [document.first_name, document.last_name].filter(Boolean).join(" "),
+                            passport_number: document.number,
+                            passport_country: document.country || "ua",
+                          })
+                          setDriverError(null)
+                        }}
+                        onRemove={(document) => deleteDocument.mutate(document.id)}
+                      />
                       <Input
                         value={driver.user_name}
                         onChange={(e) => {

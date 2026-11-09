@@ -45,6 +45,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { PlateBadge } from "@/components/order/PlateBadge"
 import { NotificationsList } from "@/components/notifications/NotificationsList"
 import { DeleteAccountRow } from "@/components/account/DeleteAccountSheet"
+import { SavedDocumentsBody, SavedDocumentsIcon } from "@/components/account/SavedDocumentsBody"
 import { apiErrorMessage, ApiRequestError } from "@/lib/api"
 import { formatDate } from "@/lib/format"
 import {
@@ -516,6 +517,9 @@ function SignedInSections() {
       </Section>
       <Section icon={Car} title={t("account.section.vehicles")}>
         <VehiclesBody />
+      </Section>
+      <Section icon={SavedDocumentsIcon} title={t("account.section.documents")}>
+        <SavedDocumentsBody />
       </Section>
       <Section
         icon={Bell}

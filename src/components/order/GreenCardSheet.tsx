@@ -20,6 +20,11 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { useSessionScope } from "@/queries/session"
+import { useDeleteDocument, useSaveDocument, useSavedDocumentsOf } from "@/queries/documents"
+import { SavedDocumentPicker } from "@/components/order/SavedDocuments"
+import type { SavedDocument, SavedDocumentType } from "@/types/api"
 import { Flag } from "@/lib/countries"
 import { dayStart, formatDate, formatPrice } from "@/lib/format"
 import { ApiRequestError, apiErrorMessage } from "@/lib/api"
@@ -432,6 +437,58 @@ function GreenCardBody({
   const [dateOpen, setDateOpen] = useState(false)
   // which holder date field's calendar is open (birth, passport_issued_at)
   const [openDateField, setOpenDateField] = useState<keyof Form | null>(null)
+
+  // The account's saved passports (vignette.id docs/documents/README.md):
+  // the picker above the holder details, the holder's passport kept on
+  // save, and which passport the series and number describe —
+  // both share the 2-letter + 6-digit shape the insurer takes.
+  const { guest } = useSessionScope()
+  const savedPassports = useSavedDocumentsOf(["foreign_passport", "internal_passport"])
+  const saveDocument = useSaveDocument()
+  const deleteDocument = useDeleteDocument()
+  const [documentType, setDocumentType] = useState<SavedDocumentType>("foreign_passport")
+  const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null)
+  const applySavedDocument = (document: SavedDocument) => {
+    setSelectedDocumentId(document.id)
+    setDocumentType(document.document_type)
+    const [series, number] =
+      document.document_type === "internal_passport"
+        ? [document.series ?? "", document.number]
+        : [document.number.slice(0, 2), document.number.slice(2)]
+    setForm((f) => ({
+      ...f,
+      first_name_latin: document.first_name ?? f.first_name_latin,
+      last_name_latin: document.last_name ?? f.last_name_latin,
+      first_name: document.first_name_local ?? f.first_name,
+      last_name: document.last_name_local ?? f.last_name,
+      tax_id: document.tax_id ?? f.tax_id,
+      birth: document.birth_date ?? f.birth,
+      city: document.city ?? f.city,
+      passport_series: series,
+      passport_number: number,
+      passport_issued_at: document.issued_at ?? f.passport_issued_at,
+      passport_issued_by: document.issued_by ?? f.passport_issued_by,
+    }))
+  }
+  const holderDocument = () => ({
+    document_type: documentType,
+    country: "ua",
+    series: documentType === "internal_passport" ? form.passport_series.toUpperCase() : null,
+    number:
+      documentType === "internal_passport"
+        ? form.passport_number
+        : `${form.passport_series.toUpperCase()}${form.passport_number}`,
+    first_name: form.first_name_latin.trim() || null,
+    last_name: form.last_name_latin.trim() || null,
+    first_name_local: form.first_name.trim() || null,
+    last_name_local: form.last_name.trim() || null,
+    birth_date: form.birth || null,
+    issued_at: form.passport_issued_at || null,
+    issued_by: form.passport_issued_by.trim() || null,
+    tax_id: form.tax_id || null,
+    city: form.city.trim() || null,
+    source: "green_card" as const,
+  })
   const [touched, setTouched] = useState(false)
 
   // ——— the price: calculated on the server whenever its inputs change ———
@@ -552,6 +609,11 @@ function GreenCardBody({
     setTouched(true)
     if (!canSave || !calculation || !category || !calc.body) return
     const phone = form.phone.replace(/[\s()-]/g, "")
+    // the holder's passport is kept for the next policy (signed-in
+    // accounts), when one was typed; a failed save never blocks the policy
+    if (!guest && passportStarted) {
+      saveDocument.mutate(holderDocument())
+    }
     onSave({
       calculation,
       calculateBody: calc.body,
@@ -789,6 +851,14 @@ function GreenCardBody({
 
         {/* policyholder */}
         <Section title={t("greenCard.holderDetails")}>
+          <div className="mb-2 empty:hidden">
+            <SavedDocumentPicker
+              documents={savedPassports.documents}
+              selectedId={selectedDocumentId}
+              onSelect={applySavedDocument}
+              onRemove={(document) => deleteDocument.mutate(document.id)}
+            />
+          </div>
           <div className="grid grid-cols-2 gap-2">
             {field("first_name_latin", { label: t("greenCard.firstNameLatin"), autoComplete: "given-name" })}
             {field("last_name_latin", { label: t("greenCard.lastNameLatin"), autoComplete: "family-name" })}
@@ -805,6 +875,16 @@ function GreenCardBody({
               {requiresPassport ? t("greenCard.passportRequired") : t("greenCard.passportOptional")}
             </span>
           </p>
+          <ToggleGroup
+            type="single"
+            value={documentType}
+            onValueChange={(value) => value && setDocumentType(value as SavedDocumentType)}
+            className="mb-2 justify-start"
+            aria-label={t("documents.type.label")}
+          >
+            <ToggleGroupItem value="foreign_passport">{t("documents.type.foreign_passport")}</ToggleGroupItem>
+            <ToggleGroupItem value="internal_passport">{t("documents.type.internal_passport")}</ToggleGroupItem>
+          </ToggleGroup>
           <div className="grid grid-cols-2 gap-2">
             {field("passport_series", { label: t("greenCard.passportSeries"), className: "uppercase", maxLength: 2, placeholder: "AA" })}
             {field("passport_number", { label: t("greenCard.passportNumber"), inputMode: "numeric", maxLength: 6, placeholder: "123456" })}

@@ -429,6 +429,56 @@ export interface BillingCompany {
 }
 
 /**
+ * GET /public/me/documents — a travel document the account saved for reuse
+ * (vignette.id docs/documents/README.md): the Moldova driver details take a
+ * foreign passport, the Green Card a passport and a tax id. Signed-in
+ * accounts only; the owner sees `number` and `tax_id` in clear (they typed
+ * them), `number_masked` ("…3456", "AB …0133") is for labels.
+ */
+export type SavedDocumentType = "foreign_passport" | "internal_passport" | "id_card"
+
+export interface SavedDocument {
+  id: number
+  document_type: SavedDocumentType
+  country: string
+  first_name: string | null
+  last_name: string | null
+  first_name_local: string | null
+  last_name_local: string | null
+  /** YYYY-MM-DD */
+  birth_date: string | null
+  series: string | null
+  number: string
+  number_masked: string
+  /** YYYY-MM-DD */
+  issued_at: string | null
+  issued_by: string | null
+  tax_id: string | null
+  city: string | null
+  source: "manual" | "diia" | "green_card" | "moldova"
+  last_used_at: number | null
+  created_at: number
+}
+
+/** POST /public/me/documents — what a form saves. */
+export interface SavedDocumentInput {
+  document_type: SavedDocumentType
+  country?: string
+  first_name?: string | null
+  last_name?: string | null
+  first_name_local?: string | null
+  last_name_local?: string | null
+  birth_date?: string | null
+  series?: string | null
+  number: string
+  issued_at?: string | null
+  issued_by?: string | null
+  tax_id?: string | null
+  city?: string | null
+  source?: SavedDocument["source"]
+}
+
+/**
  * The plate types the website's special-plate modal offers. Any non-empty
  * `cars[].type` makes the server skip that country's plate-format rules (the
  * hyphen rule still applies) and hold the paid order for an admin's check

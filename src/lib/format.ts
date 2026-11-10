@@ -132,6 +132,24 @@ export function dayStart(offsetDays = 0): number {
   return Math.floor(d.getTime() / 1000)
 }
 
+/** A "YYYY-MM-DD" day as unix seconds of its local midnight, like dayStart; null for none. */
+export function dayStartOfIso(day: string | null | undefined): number | null {
+  if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return null
+  const [y, m, d] = day.split("-").map(Number)
+  return Math.floor(new Date(y, m - 1, d).getTime() / 1000)
+}
+
+/**
+ * A picked start day as the API should receive it: midday of that local day,
+ * not its midnight. The API stores the day the start falls on in the
+ * product's own calendar (Berlin, or EET for RO/BG/MD), and midnight in
+ * Kyiv is still the day before in Berlin — the order would be stored a day
+ * early. Midday lands on the same calendar day everywhere in Europe.
+ */
+export function startDateForApi(dayStartUnix: number): number {
+  return dayStartUnix + 12 * 3600
+}
+
 export function addDays(unixSeconds: number, days: number): number {
   return unixSeconds + days * 86400
 }

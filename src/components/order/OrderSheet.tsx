@@ -65,6 +65,8 @@ import {
 import {
   addDays,
   dayStart,
+  dayStartOfIso,
+  startDateForApi,
   formatDate,
   formatCents,
   formatDayMonth,
@@ -355,14 +357,23 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
     }
   }, [open, product, periods, queryClient])
 
-  // a "from-tomorrow" period can't start today — bump the date forward
+  // the period's start-date window (min_start_date / max_start_date), as
+  // local-midnight unix seconds like startDate; null where there's no limit
+  const windowMin = dayStartOfIso(periodPrice?.min_start_date)
+  const windowMax = dayStartOfIso(periodPrice?.max_start_date)
+
+  // a "from-tomorrow" period can't start today, and nothing can start outside
+  // the period's window — bump the date into range
   useEffect(() => {
-    const restrictions =
-      product && period ? product.price[period]?.restrictions : undefined
+    const restrictions = periodPrice?.restrictions
     if (restrictions?.includes("from-tomorrow") && startDate < dayStart(1)) {
       setStartDate(dayStart(1))
+    } else if (windowMin !== null && startDate < windowMin) {
+      setStartDate(windowMin)
+    } else if (windowMax !== null && startDate > windowMax) {
+      setStartDate(windowMax)
     }
-  }, [product, period, startDate])
+  }, [periodPrice, startDate, windowMin, windowMax])
 
   useEffect(() => {
     if (me?.email) setEmail(me.email)
@@ -408,7 +419,9 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
           name: product.name,
           period,
           start_date:
-            startDate === dayStart(0) ? Math.floor(Date.now() / 1000) : startDate,
+            startDate === dayStart(0)
+              ? Math.floor(Date.now() / 1000)
+              : startDateForApi(startDate),
           flex: { type: flexType, enabled: flexEnabled },
         },
         // the Green Card in the cart is a product line of its own, so the
@@ -846,7 +859,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
             {
               name: product.name,
               period: period!,
-              start_date: isToday ? Math.floor(Date.now() / 1000) : startDate,
+              start_date: isToday ? Math.floor(Date.now() / 1000) : startDateForApi(startDate),
               flex: { type: flexType, enabled: flexEnabled },
               // mandatory for unpaid orders (/me pins order_has_been_paid:
               // false) and must be globally unique per partner — fresh UUID
@@ -1379,7 +1392,14 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
                           mode="single"
                           selected={toDate(startDate)}
                           defaultMonth={toDate(startDate)}
-                          disabled={{ before: toDate(dayStart(fromTomorrowOnly ? 1 : 0)) }}
+                          disabled={[
+                            {
+                              before: toDate(
+                                Math.max(dayStart(fromTomorrowOnly ? 1 : 0), windowMin ?? 0)
+                              ),
+                            },
+                            ...(windowMax !== null ? [{ after: toDate(windowMax) }] : []),
+                          ]}
                           onSelect={(picked) => {
                             if (!picked) return
                             setStartDate(dayStartOf(picked))

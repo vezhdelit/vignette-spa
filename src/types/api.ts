@@ -906,6 +906,15 @@ export interface ProductPeriodPrice {
   currency: string
   restrictions?: string[]
   /**
+   * The period's start-date window (vignette.id api/helpers/start-window.js):
+   * the first / last day a start may fall on, "YYYY-MM-DD", inclusive. Present
+   * only on a period that has one (the unset end is null); the matching tag
+   * is in `restrictions` while the limit can still bite. E.g. Austria's
+   * next-year annual: min_start_date "2026-12-01".
+   */
+  min_start_date?: string | null
+  max_start_date?: string | null
+  /**
    * Priced by the vehicle's emission class (Romania, vignette.id
    * docs/emission-classes). Present only when true. The period's own price
    * is then `default_emission_class`'s, which is what an order naming no

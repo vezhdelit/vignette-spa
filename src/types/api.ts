@@ -19,7 +19,11 @@ export interface ApiError {
 export interface ApiEnvelope<T> {
   error: ApiError | null
   result: T
-  pages?: { total: number; current: number }
+  /**
+   * total = the PAGE count; items = the row count; limit = the page size
+   * (items + limit on every list since 2026-11-23)
+   */
+  pages?: { total: number; current: number; items?: number; limit?: number }
   /** GET /public/me/notifications only — the badge numbers ride alongside the page */
   unread_count?: number
   total_count?: number
@@ -195,7 +199,7 @@ export type WalletEntryStatus = "pending" | "completed" | "cancelled"
 
 /** GET /public/me/wallet/transactions — one row of the statement, in cents. */
 export interface WalletTransaction {
-  id: number
+  id: string
   type: WalletEntryType
   direction: "credit" | "debit"
   amount: number
@@ -220,7 +224,7 @@ export interface WalletTransaction {
  * on 2026-11-23.
  */
 export interface TopUp {
-  id: number
+  id: string
   amount: number
   bonus: number
   currency: string
@@ -282,7 +286,7 @@ export interface ReferralInvited {
 
 /** GET /public/me/referrals/earnings — one (order, level) reward paid. */
 export interface ReferralEarning {
-  id: number
+  id: string
   level: number
   amount: number
   currency: string
@@ -334,7 +338,7 @@ export interface NotificationData {
 }
 
 export interface AppNotification {
-  id: number | string
+  id: string
   /** English fallback — render through `renderNotification()` for the UI language */
   title: string
   body: string
@@ -421,7 +425,7 @@ export interface BillingCompany {
 export type SavedDocumentType = "foreign_passport" | "internal_passport" | "id_card"
 
 export interface SavedDocument {
-  id: number
+  id: string
   document_type: SavedDocumentType
   country: string
   first_name: string | null
@@ -486,6 +490,8 @@ export interface OrderAction {
 
 export interface RefundAction extends OrderAction {
   amount_eur?: number
+  /** integer cents beside amount_eur (2026-11-23) */
+  amount_cents?: number | null
   percent?: number
 }
 
@@ -603,6 +609,8 @@ export interface GreenCardCalculation {
   product: "green_card"
   insurer: string
   price: number
+  /** integer cents beside `price` (2026-11-23) */
+  price_cents?: number
   currency: string
   tariff_uah: number
   rate: number
@@ -679,13 +687,15 @@ export interface GreenCardPolicyDetails {
  * still renders the top half.
  */
 export interface Policy {
-  id: number
+  id: string
   product: "green_card" | (string & {})
   /** the order's public id (what /public/me/orders/:id takes), or null */
   order_id: string | null
   status: PolicyStatus
   insurer: string | null
   price_eur: number
+  /** integer cents (the client API's money rule, 2026-11-23) */
+  price_cents: number
   valid_from: number | null
   valid_to: number | null
   /** the insurer's validity check — show as a QR / link */
@@ -908,6 +918,10 @@ export interface ProductPeriodPrice {
   total_price: number
   government_price: number
   partner_fee: number
+  /** integer minor units of `currency` beside the decimals (2026-11-23) */
+  total_price_cents?: number
+  government_price_cents?: number
+  partner_fee_cents?: number
   currency: string
   restrictions?: string[]
   /**
@@ -969,6 +983,9 @@ export interface FlexOption {
   type: "default" | "expanded" | string
   price: number
   original_price: number
+  /** integer minor units beside the decimals (2026-11-23) */
+  price_cents?: number
+  original_price_cents?: number
   currency: string
   per: string
   enabled: boolean
@@ -991,6 +1008,9 @@ export interface OrderPromo {
   effect_summary: string | null
   discount_eur: number
   cashback_eur: number
+  /** integer cents beside the euros (2026-11-23) */
+  discount_cents?: number
+  cashback_cents?: number
   cashback_status: "pending" | "granted" | "reversed" | "skipped" | null
 }
 
@@ -1009,6 +1029,10 @@ export interface PromoPricePreview {
   subtotal_eur: number
   discount_eur: number
   pay_price_eur: number
+  /** integer cents beside the euros (2026-11-23) */
+  subtotal_cents?: number
+  discount_cents?: number
+  pay_price_cents?: number
   currency: string
 }
 
@@ -1022,6 +1046,8 @@ export interface PromoValidateResult {
   promo: PromoInfo | null
   discount_eur: number
   cashback_eur?: number
+  discount_cents?: number
+  cashback_cents?: number
   price_preview: PromoPricePreview
 }
 
@@ -1286,6 +1312,8 @@ export type CheckoutMethod =
   | MonobankCheckoutMethod
 
 export interface CheckoutAttempt {
+  /** a string, as every id on the client API */
+  id?: string
   provider: string
   integration: string
   platform: string | null
@@ -1333,6 +1361,8 @@ export interface MonobankInvoice {
   app_url: string | null
   expires_at: number
   simulated: boolean
+  /** the checkout as it is after the invoice (since 2026-11-23, as the capture) */
+  checkout?: Checkout
 }
 
 /** GET /public/checkout/config — client-scoped, what to initialise at launch. */

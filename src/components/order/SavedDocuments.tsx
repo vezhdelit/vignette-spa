@@ -17,7 +17,7 @@ export function SavedDocumentPicker({
   onRemove,
 }: {
   documents: SavedDocument[]
-  selectedId: number | null
+  selectedId: string | null
   onSelect: (document: SavedDocument) => void
   onRemove: (document: SavedDocument) => void
 }) {

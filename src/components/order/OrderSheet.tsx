@@ -187,7 +187,7 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   const savedPassports = useSavedDocumentsOf(["foreign_passport"])
   const saveDocument = useSaveDocument()
   const deleteDocument = useDeleteDocument()
-  const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null)
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null)
   const invalidateOrders = useInvalidateOrders()
   // An invite code this visitor arrived with, for the one case an order can
   // use it: a guest checkout that creates the account (see stores/invite.ts).

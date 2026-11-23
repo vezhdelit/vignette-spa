@@ -55,7 +55,7 @@ export function useUseDocument() {
   const queryClient = useQueryClient()
   const { scope } = useSessionScope()
   return useMutation({
-    mutationFn: (id: number) =>
+    mutationFn: (id: string) =>
       apiResult<SavedDocument>(`/public/me/documents/${id}/use`, {
         method: "POST",
       }),
@@ -67,7 +67,7 @@ export function useDeleteDocument() {
   const queryClient = useQueryClient()
   const { scope } = useSessionScope()
   return useMutation({
-    mutationFn: (id: number) =>
+    mutationFn: (id: string) =>
       apiResult<{ deleted: number }>(`/public/me/documents/${id}`, {
         method: "DELETE",
       }),

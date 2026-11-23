@@ -16,7 +16,7 @@ import { orderKeys } from "@/queries/orders"
 import type { Policy, PolicyDocumentType } from "@/types/api"
 
 export const insuranceKeys = {
-  policy: (scope: string, id: number) => ["insurances", scope, "policy", id] as const,
+  policy: (scope: string, id: string) => ["insurances", scope, "policy", id] as const,
 }
 
 const isSettled = (status: Policy["status"] | undefined) =>
@@ -48,6 +48,6 @@ export function usePolicy(initial: Policy, { enabled = true } = {}) {
 }
 
 /** One of the policy's documents as a PDF blob, for QuickLook-style viewing or saving. */
-export function downloadPolicyDocument(policyId: number, type: PolicyDocumentType): Promise<Blob> {
+export function downloadPolicyDocument(policyId: string, type: PolicyDocumentType): Promise<Blob> {
   return apiBlob(`/public/me/insurances/${policyId}/documents/${type}`)
 }

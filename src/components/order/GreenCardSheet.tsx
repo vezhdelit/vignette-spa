@@ -447,7 +447,7 @@ function GreenCardBody({
   const saveDocument = useSaveDocument()
   const deleteDocument = useDeleteDocument()
   const [documentType, setDocumentType] = useState<SavedDocumentType>("foreign_passport")
-  const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null)
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null)
   const applySavedDocument = (document: SavedDocument) => {
     setSelectedDocumentId(document.id)
     setDocumentType(document.document_type)

@@ -213,22 +213,11 @@ export interface WalletTransaction {
 }
 
 /**
- * The raw Stripe intent of a top-up. Superseded by `checkout.methods[]`
- * (the same intent, plus PayPal and Monobank) — kept on the wire for older
- * clients; this app reads `checkout`.
+ * POST /public/me/wallet/top-ups. Cents. Paid, polled and cancelled through
+ * its `checkout` (/public/me/checkouts/{checkout.id}); the top-up's own
+ * poll and cancel and its `payment` / `payment_link` fields were dropped
+ * on 2026-11-23.
  */
-export interface TopUpPayment {
-  provider: "stripe"
-  env: "live" | "sandbox"
-  publishable_key: string | null
-  client_secret: string
-  payment_intent_id: string
-  customer_id: string | null
-  customer_session_client_secret: string | null
-  customer_ephemeral_key_secret: string | null
-}
-
-/** POST /public/me/wallet/top-ups, and the GET :id poll. Cents. */
 export interface TopUp {
   id: number
   amount: number
@@ -236,27 +225,15 @@ export interface TopUp {
   currency: string
   status: WalletEntryStatus
   env: "live" | "sandbox"
-  provider: string | null
+  /** what paid it ("stripe_visa", "paypal", …) once completed, else null */
+  paid_with: string | null
   created_at: number | null
   completed_at: number | null
   /**
-   * @deprecated legacy — use `checkout.hosted.url`. The hosted checkout
-   * page; still sent for old app builds.
-   */
-  payment_link: string | null
-  /**
-   * @deprecated legacy — use `checkout.methods[]` (the Stripe method carries
-   * the same client_secret). The raw Stripe intent.
-   */
-  payment?: TopUpPayment | null
-  /**
    * The checkout object (kind "top_up", id `topup_<token>`): the hosted page
-   * and every native method, exactly as an order's. Null once there is
-   * nothing left to pay.
+   * and every native method, exactly as an order's. Always present on create.
    */
-  checkout?: Checkout | null
-  /** poll and cancel: the balances after whatever this call did */
-  wallet?: Pick<Wallet, "balance" | "bonuses" | "total" | "currency">
+  checkout: Checkout
 }
 
 /* ------------------------------------------------------------- referrals */
@@ -1244,8 +1221,6 @@ export type CheckoutStatus =
 /** `checkout` on POST /public/me/orders — the client's collection preferences. */
 export interface CheckoutPrefs {
   platform?: "ios" | "android" | "web"
-  /** informational today; default "both" */
-  collect?: "native" | "hosted" | "both"
   /** where redirect methods (Monobank) come back to; see CreateOrderBody */
   return_url?: string
 }

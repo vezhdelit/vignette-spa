@@ -91,16 +91,16 @@ export function useCheckoutPaid(id: string | null, watching: boolean) {
   }
 }
 
-/** POST …/sync — the one-shot re-check after a sheet or a redirect closes. */
+/**
+ * The one-shot re-check after a sheet or a redirect closes: the checkout
+ * read itself (it asks the provider). POST …/sync, which did the same, was
+ * dropped on 2026-11-23.
+ */
 export function useSyncCheckout() {
   const queryClient = useQueryClient()
   const { scope } = useSessionScope()
   return useMutation({
-    mutationFn: ({ id, provider }: { id: string; provider?: "stripe" | "paypal" | "monobank" }) =>
-      apiResult<Checkout>(`${checkoutPath(id)}/sync`, {
-        method: "POST",
-        body: provider ? { provider } : {},
-      }),
+    mutationFn: ({ id }: { id: string }) => apiResult<Checkout>(checkoutPath(id)),
     onSuccess: (checkout) => {
       queryClient.setQueryData(checkoutKeys.detail(scope, checkout.id), checkout)
       if (checkout.status === "paid" || checkout.status === "paid_late") {

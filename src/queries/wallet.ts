@@ -19,9 +19,9 @@ import type { TopUp, Wallet, WalletEntryType, WalletTransaction } from "@/types/
  * payment having landed. A top-up is paid through its `checkout` (kind
  * "top_up") like an order, and the checkout read — useCheckoutPaid, every
  * 2 s while paying — makes the server reconcile with the provider, so the
- * wallet is credited whether or not a webhook was quick. The legacy top-up
- * poll (GET /public/me/wallet/top-ups/:id) and its `payment` /
- * `payment_link` fields are not used.
+ * wallet is credited whether or not a webhook was quick. (The top-up's own
+ * poll and cancel and its `payment` / `payment_link` fields were dropped
+ * from the API on 2026-11-23.)
  */
 
 export const walletKeys = {
@@ -84,13 +84,14 @@ export function useWalletTransactions({
 
 /**
  * POST /public/me/wallet/top-ups — writes the pending ledger row and returns
- * `payment_link`, the hosted page this app embeds.
+ * the top-up with its `checkout` (kind "top_up"): the native methods and
+ * the hosted page this app embeds.
  *
  * `stripe_api_version` is deliberately NOT sent: that switches the server to
  * minting an ephemeral key for the native PaymentSheet configuration, which
  * is an iOS/Android concern. `allowed_payment_providers` is left out too, so
  * the page offers everything the environment supports (live: Stripe, PayPal
- * and Monobank; sandbox: Stripe test mode).
+ * and Monobank; sandbox: the same three, as test or simulated payments).
  */
 export function useCreateTopUp() {
   const queryClient = useQueryClient()

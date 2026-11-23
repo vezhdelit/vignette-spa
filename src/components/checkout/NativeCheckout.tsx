@@ -423,7 +423,7 @@ function StripeForm({
       }
       // succeeded (or processing): tell the server now rather than waiting
       // for its next poll, so the success screen follows within a second
-      await sync.mutateAsync({ id: checkoutId, provider: "stripe" }).catch(() => undefined)
+      await sync.mutateAsync({ id: checkoutId }).catch(() => undefined)
     } finally {
       setBusy(false)
     }
@@ -642,7 +642,7 @@ function MonobankPane({
             size="lg"
             className="w-full"
             disabled={sync.isPending}
-            onClick={() => void sync.mutateAsync({ id: checkoutId, provider: "monobank" })}
+            onClick={() => void sync.mutateAsync({ id: checkoutId })}
           >
             {t("payment.monobank.check")}
           </Button>

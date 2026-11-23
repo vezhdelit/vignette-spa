@@ -12,7 +12,7 @@ import { apiErrorMessage } from "@/lib/api"
 import { useT } from "@/i18n"
 import { useAuthStore } from "@/stores/auth"
 import { isAccountScreen, usePushFocusStore } from "@/stores/push-focus"
-import { useOrders, useUnpaidBaskets } from "@/queries/orders"
+import { useOrders, useUnpaidBaskets, type UnpaidBasket } from "@/queries/orders"
 import { OrderCard } from "@/components/home/OrderCard"
 import { OrderCardSkeleton } from "@/components/home/OrderCardSkeleton"
 import { BuyNowCard } from "@/components/home/BuyNowCard"
@@ -20,6 +20,28 @@ import { RateUsCard } from "@/components/home/RateUsCard"
 import { PaymentDrawer } from "@/components/order/PaymentDrawer"
 import { UnpaidBanner } from "@/components/home/UnpaidBanner"
 import type { Order } from "@/types/api"
+
+// When the newest of a basket's orders was placed (unix seconds).
+const newestOf = (basket: UnpaidBasket) =>
+  Math.max(0, ...basket.orders.map((o) => Number(o.purchase_date) || 0))
+
+// The newest basket the user cancelled from the banner, kept for the tab's
+// session so a reload does not bring an older one back on top either.
+const CANCELLED_KEY = "vignette-unpaid-cancelled-up-to"
+const readCancelledUpTo = (): number => {
+  try {
+    return Number(sessionStorage.getItem(CANCELLED_KEY)) || 0
+  } catch {
+    return 0
+  }
+}
+const writeCancelledUpTo = (value: number) => {
+  try {
+    sessionStorage.setItem(CANCELLED_KEY, String(value))
+  } catch {
+    // storage blocked: the banner still steps aside for this visit
+  }
+}
 
 const HIDDEN_STATUSES = new Set(["DELETED", "UNPAID DELETED", "USER DELETED", "UNDEFINED"])
 
@@ -49,15 +71,38 @@ export function HomePage() {
   )
 
   // The newest unpaid basket rides on top as "finish your order" (its own
-  // read: ?status=created, grouped by checkout); its orders leave the list
-  // below so the basket is not shown twice. Older unpaid baskets stay there.
+  // read: ?status=created, grouped by checkout), and the banner is the ONLY
+  // place Home shows an unpaid order (2026-11-23): the API keeps one open
+  // checkout per account, so there is nothing else to offer — and an older
+  // basket that still lingers (made before that rule, or elsewhere) is never
+  // promoted when the user cancels the one on top: after a cancel only a
+  // basket newer than it may take the banner.
   const { baskets } = useUnpaidBaskets()
-  const banner = baskets[0] ?? null
+  const [cancelledUpTo, setCancelledUpTo] = useState<number>(readCancelledUpTo)
+  const banner =
+    baskets.find((basket) => newestOf(basket) > cancelledUpTo) ?? null
+  const onBannerCancelled = (basket: UnpaidBasket) => {
+    const upTo = Math.max(cancelledUpTo, newestOf(basket))
+    setCancelledUpTo(upTo)
+    writeCancelledUpTo(upTo)
+  }
   const listed = useMemo(
     () =>
-      banner
-        ? visible.filter((o) => o.checkout?.id !== banner.checkout.id)
-        : visible,
+      visible.filter(
+        (o) =>
+          // unpaid orders live in the banner, not in the list — except one
+          // whose money is moving (a payment confirming, or one that came
+          // late), which keeps its card
+          !(
+            o.status === "CREATED" &&
+            !(
+              o.checkout &&
+              (o.checkout.status === "processing" ||
+                o.checkout.status === "paid_late") &&
+              o.checkout.id !== banner?.checkout.id
+            )
+          )
+      ),
     [visible, banner]
   )
   const booting = authStatus === "booting" || isPending
@@ -148,8 +193,8 @@ export function HomePage() {
           {banner && (
             <UnpaidBanner
               basket={banner}
-              others={baskets.length - 1}
               onPay={setPaying}
+              onCancelled={() => onBannerCancelled(banner)}
             />
           )}
           {/* only while the server says rate_prompt: "anywhere" */}

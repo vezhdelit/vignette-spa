@@ -29,18 +29,19 @@ function relativeUntil(language: string, seconds: number): string {
  *   processing  a payment is being confirmed: no Pay, no Cancel
  *   paid_late   the money came after the deadline: the team handles it
  * The deadline is read off the clock, so the banner steps aside the moment
- * it passes, before the server has closed the order. Other unpaid baskets
- * stay in the list below.
+ * it passes, before the server has closed the order. It is the ONLY place
+ * Home shows an unpaid order (2026-11-23): no count of others — the API
+ * keeps one open checkout per account, and an older one is not offered.
  */
 export function UnpaidBanner({
   basket,
-  others,
   onPay,
+  onCancelled,
 }: {
   basket: UnpaidBasket
-  /** how many more unpaid baskets the list holds */
-  others: number
   onPay: (order: Order) => void
+  /** the user cancelled this basket from the banner */
+  onCancelled?: () => void
 }) {
   const { t, language } = useT()
   const { checkout, orders } = basket
@@ -69,11 +70,6 @@ export function UnpaidBanner({
               ? t("unpaid.titleLate")
               : t("unpaid.title")}
         </span>
-        {others > 0 && (
-          <span className="text-[12px] font-bold opacity-80">
-            {t("unpaid.others", { count: others })}
-          </span>
-        )}
       </div>
 
       <div className="space-y-3 p-4">
@@ -116,7 +112,11 @@ export function UnpaidBanner({
               {t("payment.payAmount", { amount: due })}
             </Button>
             <div className="flex justify-center">
-              <CancelUnpaidOrder checkoutId={checkout.id} className="w-full" />
+              <CancelUnpaidOrder
+                checkoutId={checkout.id}
+                className="w-full"
+                onCancelled={onCancelled}
+              />
             </div>
           </>
         )}

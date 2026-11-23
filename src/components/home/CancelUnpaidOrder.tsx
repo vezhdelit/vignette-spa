@@ -23,11 +23,14 @@ export function CancelUnpaidOrder({
   checkoutId,
   className,
   tone = "light",
+  onCancelled,
 }: {
   checkoutId: string
   className?: string
   /** "light": on a white card; "dark": on a tinted one */
   tone?: "light" | "dark"
+  /** the cancel went through */
+  onCancelled?: () => void
 }) {
   const { t } = useT()
   const cancel = useCancelCheckout()
@@ -37,6 +40,7 @@ export function CancelUnpaidOrder({
     try {
       await cancel.mutateAsync(checkoutId)
       toast.success(t("unpaid.canceled"))
+      onCancelled?.()
     } catch (e) {
       const refusal = e instanceof ApiRequestError && e.type === "checkout_not_open"
       toast.error(

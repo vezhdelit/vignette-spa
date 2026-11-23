@@ -14,7 +14,7 @@ import type {
   CreateOrderResult,
   Order,
   OrderChange,
-  OrderStatus,
+  OrderCheckoutRef,
 } from "@/types/api"
 
 /** valid keys for the ?status CSV filter (repositories/orders.js AUTH_STATUS_KEYS) */
@@ -47,8 +47,6 @@ export const orderKeys = {
     ["orders", scope, "list", filter] as const,
   detail: (scope: string, id: string) =>
     ["orders", scope, "detail", id] as const,
-  status: (scope: string, id: string) =>
-    ["orders", scope, "status", id] as const,
 }
 
 const orderPath = (id: string) => `/public/me/orders/${encodeURIComponent(id)}`
@@ -98,6 +96,39 @@ export function useOrders(filter: OrdersFilter = {}) {
   return { ...query, orders, pagination }
 }
 
+/** One unpaid basket: the checkout and the orders it pays for (main + extras). */
+export interface UnpaidBasket {
+  checkout: OrderCheckoutRef
+  orders: Order[]
+}
+
+/** the checkout states a "finish your order" banner speaks for */
+const BANNER_STATES: string[] = ["open", "processing", "paid_late"]
+
+/**
+ * The account's unpaid baskets, newest first, for Home's banner:
+ * `GET /public/me/orders?status=created`, grouped by `checkout.id` (a
+ * basket's orders share one checkout) and kept while the checkout is open,
+ * confirming a payment, or holding a late one. An order without the block
+ * (an API from before 2026-11-23, another partner's link) is left to the
+ * list. Polls with the list while anything is unpaid.
+ */
+export function useUnpaidBaskets() {
+  const query = useOrders({ statuses: ["created"] })
+  const baskets = useMemo(() => {
+    const byCheckout = new Map<string, UnpaidBasket>()
+    for (const order of query.orders) {
+      const checkout = order.checkout
+      if (!checkout || !BANNER_STATES.includes(checkout.status)) continue
+      const basket = byCheckout.get(checkout.id)
+      if (basket) basket.orders.push(order)
+      else byCheckout.set(checkout.id, { checkout, orders: [order] })
+    }
+    return [...byCheckout.values()]
+  }, [query.orders])
+  return { ...query, baskets }
+}
+
 /** One order — the full shape with its action blocks. */
 export function useOrder(id: string | null, { enabled = true } = {}) {
   const { scope, ready } = useSessionScope()
@@ -106,37 +137,6 @@ export function useOrder(id: string | null, { enabled = true } = {}) {
     queryFn: () => apiResult<Order>(orderPath(id!)),
     enabled: ready && enabled && id !== null,
   })
-}
-
-/**
- * GET orders/:id/status — the lightweight checkout poll: the status label
- * plus payment_link while unpaid, none of the cars/prices/action-block work
- * of the full read. Refetches every 4s while the order is still CREATED and
- * stops on its own the moment it isn't.
- */
-export function useOrderStatus(id: string | null, { enabled = true } = {}) {
-  const { scope, ready } = useSessionScope()
-  return useQuery({
-    queryKey: orderKeys.status(scope, id ?? ""),
-    queryFn: () => apiResult<OrderStatus>(`${orderPath(id!)}/status`),
-    enabled: ready && enabled && id !== null,
-    refetchInterval: (q) =>
-      !q.state.data || q.state.data.status === "CREATED" ? 4_000 : false,
-  })
-}
-
-/**
- * Checkout companion: watches a freshly created order while the user pays
- * (in the in-sheet iframe) and reports the moment it leaves CREATED. Polls
- * the status endpoint, not the full order — the success screen's list
- * invalidation fetches that once, afterwards.
- */
-export function usePaymentStatus(orderId: string | null, watching: boolean) {
-  const { data } = useOrderStatus(orderId, { enabled: watching })
-  return {
-    paid: Boolean(data && data.status !== "CREATED"),
-    status: data?.status ?? null,
-  }
 }
 
 /** Refetch every orders list of this session (after a payment landed, etc). */

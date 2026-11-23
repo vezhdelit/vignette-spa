@@ -577,6 +577,26 @@
   "payment.link.shareText": "Bitte bezahlen Sie {amount} für diese Bestellung bei vignette.id:",
   "payment.link.qr": "Mit der Handykamera scannen und dort bezahlen",
   "payment.link.validUntil": "Der Link kann bis {date} bezahlt werden",
+  "unpaid.title": "Bestellung abschließen",
+  "unpaid.titleProcessing": "Zahlung wird bestätigt",
+  "unpaid.titleLate": "Zahlung verspätet eingegangen",
+  "unpaid.others": {
+    "one": "+{count} weitere offene",
+    "other": "+{count} weitere offene"
+  },
+  "unpaid.moreItems": {
+    "one": "und {count} weiterer Artikel",
+    "other": "und {count} weitere Artikel"
+  },
+  "unpaid.payBy": "Bitte bis {date} bezahlen ({relative})",
+  "unpaid.cancel": "Bestellung stornieren",
+  "unpaid.cancelConfirm": "Diese unbezahlte Bestellung stornieren? Es wird nichts abgebucht, und Sie können jederzeit neu kaufen — mit den richtigen Angaben.",
+  "unpaid.cancelYes": "Ja, stornieren",
+  "unpaid.cancelKeep": "Behalten",
+  "unpaid.canceled": "Bestellung storniert",
+  "unpaid.cancelProcessing": "Für diese Bestellung wird gerade eine Zahlung bestätigt, daher kann sie jetzt nicht storniert werden.",
+  "unpaid.cancelPaid": "Diese Bestellung wurde gerade bezahlt, es gibt nichts zu stornieren.",
+  "unpaid.cancelFailed": "Die Bestellung konnte nicht storniert werden. Bitte erneut versuchen.",
   "payment.payAmount": "{amount} bezahlen",
   "payment.confirming": "Zahlung wird bestätigt…",
   "payment.declined": "Die Zahlung wurde abgelehnt. Versuchen Sie eine andere Karte oder eine andere Methode.",

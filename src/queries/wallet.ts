@@ -16,10 +16,12 @@ import type { TopUp, Wallet, WalletEntryType, WalletTransaction } from "@/types/
  * guest has no wallet and every endpoint answers 403 guest_not_allowed.
  *
  * The rule that shapes all of it: the client is never the authority on a
- * payment having landed. The top-up is paid on the server's own hosted page
- * and `useTopUp` polls, which makes the server reconcile with the provider
- * — so the wallet is credited whether or not a webhook was quick and
- * whether or not this tab survived.
+ * payment having landed. A top-up is paid through its `checkout` (kind
+ * "top_up") like an order, and the checkout read — useCheckoutPaid, every
+ * 2 s while paying — makes the server reconcile with the provider, so the
+ * wallet is credited whether or not a webhook was quick. The legacy top-up
+ * poll (GET /public/me/wallet/top-ups/:id) and its `payment` /
+ * `payment_link` fields are not used.
  */
 
 export const walletKeys = {
@@ -27,7 +29,6 @@ export const walletKeys = {
   detail: (scope: string) => ["wallet", scope, "detail"] as const,
   transactions: (scope: string, type?: WalletEntryType) =>
     ["wallet", scope, "transactions", type ?? "all"] as const,
-  topUp: (scope: string, id: number) => ["wallet", scope, "top-up", id] as const,
 }
 
 /** GET /public/me/wallet — balances plus the top-up options to render. */
@@ -101,40 +102,6 @@ export function useCreateTopUp() {
         body: { amount },
       }),
     // a pending row now exists — it belongs in the statement
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: walletKeys.all(scope) }),
-  })
-}
-
-/**
- * GET /public/me/wallet/top-ups/:id — the checkout poll.
- *
- * The server reconciles with the provider on every one of these, so this is
- * what actually credits the wallet when a webhook is late or never arrives.
- * Polls every 3s while pending and stops by itself.
- */
-export function useTopUp(id: number | null, { enabled = true } = {}) {
-  const { scope, ready, guest } = useSessionScope()
-  return useQuery({
-    queryKey: walletKeys.topUp(scope, id ?? 0),
-    queryFn: () =>
-      apiResult<TopUp>(`/public/me/wallet/top-ups/${encodeURIComponent(String(id))}`),
-    enabled: ready && !guest && enabled && id !== null,
-    refetchInterval: (query) =>
-      !query.state.data || query.state.data.status === "pending" ? 3_000 : false,
-  })
-}
-
-/** POST /public/me/wallet/top-ups/:id/cancel — the user closed the sheet. */
-export function useCancelTopUp() {
-  const queryClient = useQueryClient()
-  const { scope } = useSessionScope()
-  return useMutation({
-    mutationFn: (id: number) =>
-      apiResult<TopUp>(
-        `/public/me/wallet/top-ups/${encodeURIComponent(String(id))}/cancel`,
-        { method: "POST" }
-      ),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: walletKeys.all(scope) }),
   })

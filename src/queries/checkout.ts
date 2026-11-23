@@ -25,18 +25,6 @@ export const checkoutKeys = {
 
 const checkoutPath = (id: string) => `/public/me/checkouts/${encodeURIComponent(id)}`
 
-/** The checkout id behind a hosted page URL (`…/pay/<id>`), or null. */
-export function checkoutIdFromPaymentLink(paymentLink: string | null | undefined): string | null {
-  if (!paymentLink) return null
-  try {
-    const url = new URL(paymentLink, window.location.origin)
-    const match = /\/pay\/(?:sandbox\/)?([^/?#]+)/.exec(url.pathname)
-    return match ? decodeURIComponent(match[1]) : null
-  } catch {
-    return null
-  }
-}
-
 /** GET /public/checkout/config — what the client may do before any order exists. */
 export function useCheckoutConfig({ enabled = true } = {}) {
   return useQuery({
@@ -55,7 +43,7 @@ const ACTIVE: Checkout["status"][] = ["open", "processing"]
  * anything else. `initial` seeds the cache with the block the create call
  * answered, so the first render needs no round trip.
  *
- * When a read says `paid`, the order status poll and the wallet queries are
+ * When a read says `paid`, the order lists and the wallet queries are
  * invalidated right away — the sheets watching them flip to their success
  * screen without waiting for their own interval.
  */
@@ -70,7 +58,7 @@ export function useCheckout(
     queryFn: async () => {
       const checkout = await apiResult<Checkout>(checkoutPath(id!))
       if (checkout.status === "paid" || checkout.status === "paid_late") {
-        void queryClient.invalidateQueries({ queryKey: ["orders", scope, "status"] })
+        void queryClient.invalidateQueries({ queryKey: ["orders", scope] })
         void queryClient.invalidateQueries({ queryKey: ["wallet", scope] })
       }
       return checkout
@@ -83,6 +71,24 @@ export function useCheckout(
       watching && (!q.state.data || ACTIVE.includes(q.state.data.status)) ? 2_000 : false,
     refetchIntervalInBackground: true,
   })
+}
+
+/**
+ * Is this checkout paid? The one rule while paying (docs/checkout/README.md):
+ * read `GET /public/me/checkouts/:id` — it asks the provider and completes
+ * the payment, so the success screen never waits for a webhook. Shares the
+ * payment sheet's own query (same key), so it adds no request. `paid_late`
+ * is not success: the money came after the deadline and the team handles it
+ * (the sheet shows that itself).
+ */
+export function useCheckoutPaid(id: string | null, watching: boolean) {
+  const query = useCheckout(id, { watching })
+  const checkout = query.data ?? null
+  return {
+    paid: checkout?.status === "paid",
+    status: checkout?.status ?? null,
+    checkout,
+  }
 }
 
 /** POST …/sync — the one-shot re-check after a sheet or a redirect closes. */
@@ -98,7 +104,7 @@ export function useSyncCheckout() {
     onSuccess: (checkout) => {
       queryClient.setQueryData(checkoutKeys.detail(scope, checkout.id), checkout)
       if (checkout.status === "paid" || checkout.status === "paid_late") {
-        void queryClient.invalidateQueries({ queryKey: ["orders", scope, "status"] })
+        void queryClient.invalidateQueries({ queryKey: ["orders", scope] })
         void queryClient.invalidateQueries({ queryKey: ["wallet", scope] })
       }
     },
@@ -133,7 +139,7 @@ export function usePayPalCapture() {
       ),
     onSuccess: ({ checkout }) => {
       queryClient.setQueryData(checkoutKeys.detail(scope, checkout.id), checkout)
-      void queryClient.invalidateQueries({ queryKey: ["orders", scope, "status"] })
+      void queryClient.invalidateQueries({ queryKey: ["orders", scope] })
       void queryClient.invalidateQueries({ queryKey: ["wallet", scope] })
     },
   })
@@ -178,7 +184,7 @@ export function useSimulateCheckout() {
       }),
     onSuccess: (checkout) => {
       queryClient.setQueryData(checkoutKeys.detail(scope, checkout.id), checkout)
-      void queryClient.invalidateQueries({ queryKey: ["orders", scope, "status"] })
+      void queryClient.invalidateQueries({ queryKey: ["orders", scope] })
       void queryClient.invalidateQueries({ queryKey: ["wallet", scope] })
     },
   })

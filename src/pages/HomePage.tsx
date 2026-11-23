@@ -12,12 +12,13 @@ import { apiErrorMessage } from "@/lib/api"
 import { useT } from "@/i18n"
 import { useAuthStore } from "@/stores/auth"
 import { isAccountScreen, usePushFocusStore } from "@/stores/push-focus"
-import { useOrders } from "@/queries/orders"
+import { useOrders, useUnpaidBaskets } from "@/queries/orders"
 import { OrderCard } from "@/components/home/OrderCard"
 import { OrderCardSkeleton } from "@/components/home/OrderCardSkeleton"
 import { BuyNowCard } from "@/components/home/BuyNowCard"
 import { RateUsCard } from "@/components/home/RateUsCard"
 import { PaymentDrawer } from "@/components/order/PaymentDrawer"
+import { UnpaidBanner } from "@/components/home/UnpaidBanner"
 import type { Order } from "@/types/api"
 
 const HIDDEN_STATUSES = new Set(["DELETED", "UNPAID DELETED", "USER DELETED", "UNDEFINED"])
@@ -45,6 +46,19 @@ export function HomePage() {
   const visible = useMemo(
     () => orders.filter((o) => !HIDDEN_STATUSES.has(o.status)),
     [orders]
+  )
+
+  // The newest unpaid basket rides on top as "finish your order" (its own
+  // read: ?status=created, grouped by checkout); its orders leave the list
+  // below so the basket is not shown twice. Older unpaid baskets stay there.
+  const { baskets } = useUnpaidBaskets()
+  const banner = baskets[0] ?? null
+  const listed = useMemo(
+    () =>
+      banner
+        ? visible.filter((o) => o.checkout?.id !== banner.checkout.id)
+        : visible,
+    [visible, banner]
   )
   const booting = authStatus === "booting" || isPending
 
@@ -91,7 +105,7 @@ export function HomePage() {
     if (
       pushFocus?.screen === "checkout" &&
       target.status === "CREATED" &&
-      target.payment_link
+      target.checkout
     ) {
       setPaying(target)
     }
@@ -131,9 +145,16 @@ export function HomePage() {
         <BuyNowCard onBuy={() => navigate("/vignettes")} />
       ) : (
         <>
+          {banner && (
+            <UnpaidBanner
+              basket={banner}
+              others={baskets.length - 1}
+              onPay={setPaying}
+            />
+          )}
           {/* only while the server says rate_prompt: "anywhere" */}
           <RateUsCard />
-          {visible.map((order) => (
+          {listed.map((order) => (
             <OrderCard
               key={order.id}
               order={order}
@@ -161,8 +182,7 @@ export function HomePage() {
       )}
 
       <PaymentDrawer
-        orderId={paying?.id ?? null}
-        paymentLink={paying?.payment_link ?? null}
+        checkoutId={paying?.checkout?.id ?? null}
         open={paying !== null}
         onClose={() => setPaying(null)}
       />

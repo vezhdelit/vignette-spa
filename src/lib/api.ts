@@ -29,6 +29,8 @@ export class ApiRequestError extends Error {
   retryAfter?: number
   /** promo_not_eligible: which condition failed (e.g. "min_cars") */
   reason?: string
+  /** checkout_not_open: the checkout's state that refused the call */
+  checkoutStatus?: string
 
   constructor(status: number, error: ApiError | null, retryAfter?: number) {
     super(error?.message || `Request failed (${status})`)
@@ -37,6 +39,7 @@ export class ApiRequestError extends Error {
     this.type = error?.type || "unknown_error"
     this.field = error?.field
     this.reason = error?.reason
+    this.checkoutStatus = error?.status
     this.retryAfter = retryAfter
   }
 }

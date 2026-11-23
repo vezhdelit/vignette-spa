@@ -102,11 +102,8 @@ import {
 } from "@/queries/catalog"
 import { useMe } from "@/queries/me"
 import { useCompanies, useVehicles } from "@/queries/account"
-import {
-  useCreateOrder,
-  useInvalidateOrders,
-  usePaymentStatus,
-} from "@/queries/orders"
+import { useCreateOrder, useInvalidateOrders } from "@/queries/orders"
+import { useCheckoutPaid } from "@/queries/checkout"
 import {
   isPromoError,
   useAutoPromo,
@@ -261,8 +258,9 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
   const [promo, setPromo] = useState<PromoValidateResult | null>(null)
   const [promoError, setPromoError] = useState<string | null>(null)
   const [promoChecking, setPromoChecking] = useState(false)
-  const [paymentLink, setPaymentLink] = useState<string | null>(null)
-  // the checkout block the create call answered: the native sheet's seed
+  // the checkout block the create call answered: the native sheet's seed,
+  // and the one thing this sheet reads about the payment (never the legacy
+  // payment / payment_link fields)
   const [checkout, setCheckout] = useState<Checkout | null>(null)
   // the server's verdict on the driver fields (`invalid_user_data`)
   const [driverError, setDriverError] = useState<string | null>(null)
@@ -323,7 +321,6 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
       setStep("order")
       setPeriod(periods[0] ?? null)
       setStartDate(dayStart(0))
-      setPaymentLink(null)
       setCheckout(null)
       setDriverError(null)
       setCreatedOrder(null)
@@ -379,9 +376,10 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
     if (me?.email) setEmail(me.email)
   }, [me?.email])
 
-  // watch the created order while the user pays in the in-sheet iframe —
-  // polled every 4s until it leaves CREATED, which swaps in the success screen
-  const { paid } = usePaymentStatus(createdOrder?.id ?? null, step === "paying")
+  // watch the checkout while the user pays — the read that asks the provider,
+  // every 2 s (shared with the sheet's own poll); `paid` swaps in the success
+  // screen
+  const { paid } = useCheckoutPaid(checkout?.id ?? null, step === "paying")
 
   /**
    * The order a promo is priced against — the same `cars` / `products` shapes
@@ -917,7 +915,8 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
       // Balance spent on this order. Sent whichever way the branch below
       // goes — `covered_full` is what tells the two apart, and the wire
       // amounts are cents while the catalogue is euros.
-      const walletPaid = result.payment?.wallet
+      const walletPaid = result.checkout?.amount.wallet
+      const coveredFull = result.checkout?.status === "paid"
       if (walletPaid?.applied) {
         track(
           "checkout.wallet_applied",
@@ -925,18 +924,17 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
             amount_eur: Math.round(walletPaid.applied) / 100,
             from_balance_eur: Math.round(walletPaid.from_balance ?? 0) / 100,
             from_bonuses_eur: Math.round(walletPaid.from_bonuses ?? 0) / 100,
-            covered_full: result.payment?.status === "paid",
+            covered_full: coveredFull,
           },
           { product: product.name, ...(created?.id ? { order_id: created.id } : {}) },
         )
       }
 
-      // The wallet may have covered the whole order, in which case there is
-      // nothing to pay: no payment link comes back and the order is already
-      // PENDING. Branch on payment.status, never on the link being there.
-      if (result.payment?.status === "paid") {
+      // The wallet (or a promo) may have covered the whole order: the checkout
+      // answers status "paid", due 0, nothing to poll, and the order is
+      // already PENDING. Branch on checkout.status.
+      if (coveredFull) {
         void invalidateWallet()
-        setPaymentLink(null)
         setCheckout(null)
         setStep("paid")
         return
@@ -958,10 +956,9 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
         { product: product.name, ...(created?.id ? { order_id: created.id } : {}) },
       )
 
-      // the native sheet renders `checkout.methods[]`; the hosted page
-      // (`payment_link`, shown in an in-sheet iframe — it ships
-      // `frame-ancestors *` for exactly this) remains the fallback
-      setPaymentLink(result.payment_link ?? null)
+      // the native sheet renders `checkout.methods[]`; the checkout's own
+      // `hosted.url` (in an in-sheet iframe — it ships `frame-ancestors *`
+      // for exactly this) remains the fallback
       setCheckout(result.checkout ?? null)
       setStep("paying")
     } catch (e) {
@@ -1075,7 +1072,6 @@ export function OrderSheet({ product, open, onClose, onSwitchCountry }: OrderShe
         {step === "paying" && !paid && (
           <PaymentModal
             checkout={checkout}
-            paymentLink={paymentLink}
             onClose={finish}
             // a decline inside the native sheet: the order stays payable and
             // the attempt is on record with its reason, apart from a close

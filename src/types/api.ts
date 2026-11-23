@@ -9,6 +9,11 @@ export interface ApiError {
   field?: string
   /** promo_not_eligible only — which condition failed (e.g. "min_cars") */
   reason?: string
+  /**
+   * checkout_not_open only — the state that refused it: paid | paid_late |
+   * expired | processing (a payment being confirmed: a cancel waits for it)
+   */
+  status?: string
 }
 
 export interface ApiEnvelope<T> {
@@ -235,12 +240,14 @@ export interface TopUp {
   created_at: number | null
   completed_at: number | null
   /**
-   * The hosted checkout page. Present on create and, while the top-up is
-   * still pending, on the poll too — so a reload never loses it. Null once
-   * there is nothing left to pay.
+   * @deprecated legacy — use `checkout.hosted.url`. The hosted checkout
+   * page; still sent for old app builds.
    */
   payment_link: string | null
-  /** the raw Stripe intent; `checkout` carries the same and more */
+  /**
+   * @deprecated legacy — use `checkout.methods[]` (the Stripe method carries
+   * the same client_secret). The raw Stripe intent.
+   */
   payment?: TopUpPayment | null
   /**
    * The checkout object (kind "top_up", id `topup_<token>`): the hosted page
@@ -534,8 +541,18 @@ export interface Order {
   modify?: OrderAction
   full_refund?: RefundAction
   partial_refund?: RefundAction
-  /** CREATED (unpaid) orders only: the checkout URL — reopen it to finish paying */
+  /**
+   * @deprecated legacy — use `checkout` (resume by `checkout.id`; the hosted
+   * page is the checkout's `hosted.url`). CREATED orders only.
+   */
   payment_link?: string
+  /**
+   * CREATED (unpaid) orders only: the checkout the order is paid through.
+   * `id` resumes it with GET /public/me/checkouts/:id — NOT the last segment
+   * of payment_link (that is the page's own id since 2026-11-21). Absent when
+   * the link belongs to another partner than this client's.
+   */
+  checkout?: OrderCheckoutRef | null
   /** the one promo this order carries, or null (helpers/promo-rules.js#publicPromoView) */
   promo?: OrderPromo | null
   /** the invoice's billing company, or null for a personal invoice */
@@ -718,7 +735,20 @@ export interface OrderStatus {
    * row read, no provider calls) — enough to resume it through
    * GET /public/me/checkouts/:id.
    */
-  checkout?: { id: string; status: CheckoutStatus } | null
+  checkout?: OrderCheckoutRef | null
+}
+
+/**
+ * The checkout an unpaid order is paid through, on every /public/me order
+ * read while CREATED: rows only, no provider call. `processing` = a payment
+ * in flight (never offer to pay again); `expires_at` the deadline (unix
+ * seconds); `due` the cents still to pay, after a wallet hold.
+ */
+export interface OrderCheckoutRef {
+  id: string
+  status: CheckoutStatus
+  expires_at?: number | null
+  due?: number
 }
 
 export interface OrderChange {
@@ -816,9 +846,9 @@ export interface CreateOrderBody {
   /**
    * Pay from the wallet. The server reserves min(wallet, order total,
    * max_amount) — bonuses before balance — when the order is created, and
-   * the payment page then charges only `payment.due`. When the wallet
-   * covers everything there is no payment_link at all and the order is
-   * already paid. Signed-in sessions only (a guest has no wallet).
+   * the checkout then charges only `checkout.amount.due`. When the wallet
+   * covers everything the checkout answers status "paid" (due 0) and the
+   * order is already paid. Signed-in sessions only (a guest has no wallet).
    */
   wallet?: {
     use: boolean
@@ -863,19 +893,18 @@ export interface CreateOrderResult {
   user_id: string
   orders: CreatedOrderStub[]
   /**
-   * Absent when the wallet covered the whole order — `payment.status` is
-   * then "paid" and the order is already PENDING, so there is nothing to
-   * open and nothing to poll. Branch on `payment.status`, not on this.
+   * @deprecated legacy — use `checkout.hosted.url`. Still sent for old app
+   * builds; absent when the wallet covered the whole order.
    */
   payment_link?: string
   /**
-   * How this order is being paid. Present on every /public/me order
-   * response; `wallet` is null unless the request asked to use it.
+   * @deprecated legacy — use `checkout.status` ("paid" when the wallet or a
+   * promo covered it) and `checkout.amount` { total, due, wallet }.
    */
   payment?: OrderPaymentSummary
   /**
-   * The checkout object: the hosted page (`hosted.url` = `payment_link`)
-   * and every native method in one block, or an already `paid` one when the
+   * The checkout object — THE payment contract of this answer: the hosted
+   * page (`hosted.url`) and every native method in one block, or an already `paid` one when the
    * wallet or a promo covered the batch. Null only when it could not be
    * built — the hosted link always remains.
    */

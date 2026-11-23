@@ -11,7 +11,8 @@ import { track } from "@/lib/insights"
 import { formatCents } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { useT } from "@/i18n"
-import { useCancelTopUp, useCreateTopUp, useTopUp } from "@/queries/wallet"
+import { useCreateTopUp } from "@/queries/wallet"
+import { useCancelCheckout, useCheckoutPaid } from "@/queries/checkout"
 import type { Checkout, Wallet } from "@/types/api"
 
 /**
@@ -19,15 +20,18 @@ import type { Checkout, Wallet } from "@/types/api"
  * with steps, and the checkout itself rendered by the very same
  * `PaymentModal` the order flow uses.
  *
- * The create call answers a `checkout` block (kind "top_up") — the same
- * shape an order gets, so the native sheet (Stripe Payment Element, PayPal,
- * Monobank) renders it unchanged, with the server's hosted page
- * (`payment_link`) as the fallback.
+ * The create call answers a `checkout` block (kind "top_up", id
+ * "topup_<token>") — the same shape an order gets, so the native sheet
+ * (Stripe Payment Element, PayPal, Monobank) renders it unchanged, with the
+ * checkout's own `hosted.url` as the fallback. Only the checkout is read: the
+ * top-up's legacy `payment` / `payment_link` fields and its own poll
+ * (GET /public/me/wallet/top-ups/:id) are not.
  *
- * Nothing here decides that money arrived. `useTopUp` polls, the server
- * reconciles with the provider on every poll, and the success step follows
- * that. Closing while still pending is the abandon signal and cancels the
- * provider checkout, mirroring how leaving the order checkout works.
+ * Nothing here decides that money arrived. The checkout read polls, the
+ * server reconciles with the provider on every read, and the success step
+ * follows that. Closing while still open is the abandon signal and cancels
+ * the checkout (POST /public/me/checkouts/:id/cancel), exactly as leaving an
+ * order checkout does.
  */
 
 // "paying" covers the success screen too: it shows once the polled top-up
@@ -51,15 +55,16 @@ export function TopUpDrawer({
   const [step, setStep] = useState<Step>("amount")
   const [amount, setAmount] = useState<number>(wallet.top_up.presets[1] ?? 1900)
   const [custom, setCustom] = useState("")
-  const [topUpId, setTopUpId] = useState<number | null>(null)
-  const [paymentLink, setPaymentLink] = useState<string | null>(null)
   const [checkout, setCheckout] = useState<Checkout | null>(null)
 
   const createTopUp = useCreateTopUp()
-  const cancelTopUp = useCancelTopUp()
-  const poll = useTopUp(topUpId, { enabled: step === "paying" })
-  const credited = poll.data
-  const paid = credited?.status === "completed"
+  const cancelCheckout = useCancelCheckout()
+  // the checkout read while paying — it asks the provider and credits the
+  // wallet the moment the money lands
+  const { paid, checkout: credited } = useCheckoutPaid(
+    checkout?.id ?? null,
+    step === "paying"
+  )
 
   // The balances behind the drawer are stale the moment the money lands.
   // This is a side effect on external state, not a render decision — which
@@ -90,9 +95,13 @@ export function TopUpDrawer({
   const start = async () => {
     try {
       const result = await createTopUp.mutateAsync(amount)
-      setTopUpId(result.id)
-      setPaymentLink(result.payment_link)
-      setCheckout(result.checkout ?? null)
+      if (!result.checkout) {
+        // every top-up answers its checkout; without one there is nothing
+        // this drawer can pay through
+        toast.error(t("common.somethingWrong"))
+        return
+      }
+      setCheckout(result.checkout)
       setStep("paying")
       // The amount is chosen and the checkout is about to open. `preset`
       // says whether a suggested tier was tapped or a figure typed, which is
@@ -121,17 +130,15 @@ export function TopUpDrawer({
    * starting at the amount step without a render round trip.
    */
   const close = () => {
-    if (step === "paying" && topUpId !== null && !paid) {
+    if (step === "paying" && checkout !== null && !paid) {
       // Closed with the checkout open and nothing credited. Counted as a
       // failed top-up with its own reason, so abandonment and a decline stay
       // tellable apart in the same funnel.
       track("wallet.topup_failed", { amount_eur: eur(amount), reason: "abandoned" })
       // best-effort: the hourly sweep closes it either way
-      void cancelTopUp.mutateAsync(topUpId).catch(() => {})
+      void cancelCheckout.mutateAsync(checkout.id).catch(() => {})
     }
     setStep("amount")
-    setTopUpId(null)
-    setPaymentLink(null)
     setCheckout(null)
     setCustom("")
     onClose()
@@ -145,7 +152,6 @@ export function TopUpDrawer({
         {step === "paying" && !paid && (
           <PaymentModal
             checkout={checkout}
-            paymentLink={paymentLink}
             onClose={close}
             // a decline in the native sheet: the top-up stays open for a
             // retry; counted with its own reason, apart from an abandonment
@@ -157,8 +163,8 @@ export function TopUpDrawer({
 
         {step === "paying" && paid && (
           <DoneScreen
-            amount={credited?.amount ?? amount}
-            bonus={credited?.bonus ?? 0}
+            amount={credited?.amount.total ?? amount}
+            bonus={credited?.amount.bonus ?? 0}
             onFinish={close}
           />
         )}

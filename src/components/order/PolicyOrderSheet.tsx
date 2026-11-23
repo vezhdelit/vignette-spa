@@ -38,7 +38,8 @@ import { useAuthStore } from "@/stores/auth"
 import { clearPendingInviteCode, getPendingInviteCode } from "@/stores/invite"
 import { useMe } from "@/queries/me"
 import { useVehicles } from "@/queries/account"
-import { useCreateOrder, useInvalidateOrders, usePaymentStatus } from "@/queries/orders"
+import { useCreateOrder, useInvalidateOrders } from "@/queries/orders"
+import { useCheckoutPaid } from "@/queries/checkout"
 import {
   isPromoError,
   useAutoPromo,
@@ -110,8 +111,8 @@ export function PolicyOrderSheet({
   const [promoError, setPromoError] = useState<string | null>(null)
   const [promoChecking, setPromoChecking] = useState(false)
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null)
-  const [paymentLink, setPaymentLink] = useState<string | null>(null)
-  // the checkout block the create call answered: the native sheet's seed
+  // the checkout block the create call answered: the native sheet's seed,
+  // and all this sheet reads about the payment
   const [checkout, setCheckout] = useState<Checkout | null>(null)
   const [createdOrder, setCreatedOrder] = useState<{ id: string } | null>(null)
   const plateAttempts = useRef(0)
@@ -132,7 +133,6 @@ export function PolicyOrderSheet({
     setPromo(null)
     setPromoError(null)
     setDuplicateWarning(null)
-    setPaymentLink(null)
     setCheckout(null)
     setCreatedOrder(null)
     setTerms(true)
@@ -143,7 +143,9 @@ export function PolicyOrderSheet({
     if (me?.email) setEmail(me.email)
   }, [me?.email])
 
-  const { paid } = usePaymentStatus(createdOrder?.id ?? null, step === "paying")
+  // the checkout read while paying — it asks the provider (shared with the
+  // sheet's own poll)
+  const { paid } = useCheckoutPaid(checkout?.id ?? null, step === "paying")
 
   const emailValid = /.+@.+\..+/.test(email)
   const plateVerdict = checkPlateLocally(plate, plateCountry)
@@ -313,9 +315,9 @@ export function PolicyOrderSheet({
         { product: PRODUCT, amount_eur: payTotal, vehicles: 1 },
         { product: PRODUCT, ...(created?.id ? { order_id: created.id } : {}) },
       )
-      // a 100% promo: nothing to pay, the order is already PENDING
-      if (result.payment?.status === "paid") {
-        setPaymentLink(null)
+      // a 100% promo: the checkout answers "paid", nothing to pay, the order
+      // is already PENDING
+      if (result.checkout?.status === "paid") {
         setCheckout(null)
         setStep("paid")
         return
@@ -325,7 +327,6 @@ export function PolicyOrderSheet({
         { amount_eur: payTotal },
         { product: PRODUCT, ...(created?.id ? { order_id: created.id } : {}) },
       )
-      setPaymentLink(result.payment_link ?? null)
       setCheckout(result.checkout ?? null)
       setStep("paying")
     } catch (e) {
@@ -405,7 +406,6 @@ export function PolicyOrderSheet({
         {step === "paying" && !paid && (
           <PaymentModal
             checkout={checkout}
-            paymentLink={paymentLink}
             onClose={finish}
             // a decline inside the native sheet: the order stays payable,
             // the attempt is on record with its reason

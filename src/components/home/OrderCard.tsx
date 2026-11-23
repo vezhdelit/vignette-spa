@@ -42,6 +42,7 @@ import {
 import { Spinner } from "@/components/ui/spinner"
 import { PlateBadge } from "@/components/order/PlateBadge"
 import { PolicyCard } from "@/components/home/PolicyCard"
+import { CancelUnpaidOrder } from "@/components/home/CancelUnpaidOrder"
 import { VehicleLookupRow } from "@/components/order/VehicleLookup"
 import { FlagRect } from "@/lib/countries"
 import { countryLabel, PLATE_COUNTRIES, Flag } from "@/lib/countries"
@@ -151,7 +152,8 @@ export function OrderCard({
   // unpaid — expanding the card offers just the Complete payment button
   // instead of the transfer/modify/pdf section
   const awaitingPayment = order.status === "CREATED"
-  const canPay = awaitingPayment && Boolean(order.payment_link) && onPay
+  // payable through its checkout (the order read carries it while CREATED)
+  const canPay = awaitingPayment && Boolean(order.checkout) && onPay
 
   const theme = statusTheme(order)
   const car = order.cars[0]
@@ -245,16 +247,31 @@ export function OrderCard({
           ))}
 
           {awaitingPayment ? (
-            canPay && (
-              <Button
-                variant="mint"
-                size="xl"
-                className="h-12 w-full text-[15px] tracking-[0.2em]"
-                onClick={() => onPay?.(order)}
-              >
-                {t("orderCard.completePayment")}
-              </Button>
-            )
+            <>
+              {canPay && order.checkout?.status !== "processing" && (
+                <Button
+                  variant="mint"
+                  size="xl"
+                  className="h-12 w-full text-[15px] tracking-[0.2em]"
+                  onClick={() => onPay?.(order)}
+                >
+                  {t("orderCard.completePayment")}
+                </Button>
+              )}
+              {order.checkout?.status === "processing" && (
+                <p className="flex items-center gap-2 text-[14px] font-semibold text-navy-soft">
+                  <Spinner className="size-4 text-brand" />
+                  {t("payment.confirming")}
+                </p>
+              )}
+              {/* an unpaid basket the user won't finish (wrong data: an
+                  unpaid order can't be edited — cancel, buy again) */}
+              {order.checkout?.status === "open" && (
+                <div className="flex justify-center">
+                  <CancelUnpaidOrder checkoutId={order.checkout.id} className="w-full" />
+                </div>
+              )}
+            </>
           ) : isPolicy ? (
             order.receipt && (
               <div className="flex flex-wrap gap-2">

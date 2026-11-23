@@ -2,13 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { loadStripe, type Stripe } from "@stripe/stripe-js"
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js"
 import { loadScript, type PayPalNamespace } from "@paypal/paypal-js"
-import { ExternalLink, FlaskConical, TriangleAlert } from "lucide-react"
+import { Check, Copy, ExternalLink, FlaskConical, Share2, TriangleAlert } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { useT, type MessageKey } from "@/i18n"
 import { apiErrorMessage } from "@/lib/api"
-import { formatCents } from "@/lib/format"
+import { formatCents, formatDotDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import {
   useCheckoutConfig,
@@ -39,6 +39,12 @@ import type {
  *
  * In sandbox the sheet also offers to simulate the active method's outcome
  * (`…/simulate`), so every branch is testable without a card.
+ *
+ * An order checkout also has a "Link" tab: the hosted page's URL to copy,
+ * share or scan (QR on wide screens), for someone else to pay — a company,
+ * a friend — or to pay on another device. The checkout poll keeps running
+ * while the sheet is up, so a payment made through the link elsewhere flips
+ * this screen to its success state like any other.
  */
 export function NativeCheckout({
   checkout,
@@ -53,16 +59,22 @@ export function NativeCheckout({
 }) {
   const { t } = useT()
   const methods = checkout.methods
-  const [picked, setPicked] = useState<CheckoutMethod["provider"] | null>(null)
+  // the link to hand on: an order's hosted page (a top-up is the buyer's own
+  // wallet, nobody else's to pay)
+  const shareable = checkout.kind === "order_batch" ? (paymentLink ?? checkout.hosted?.url ?? null) : null
+  const [picked, setPicked] = useState<Tab | null>(null)
   // the checkout re-reads every 2s; a method that vanished (a provider
   // outage) must not leave the sheet on an empty tab, so the pick is only
   // honoured while it is on offer
-  const active =
-    picked !== null && methods.some((m) => m.provider === picked)
-      ? picked
-      : (methods[0]?.provider ?? null)
+  const active: Tab | null =
+    picked === LINK_TAB && shareable
+      ? LINK_TAB
+      : picked !== null && methods.some((m) => m.provider === picked)
+        ? picked
+        : (methods[0]?.provider ?? null)
   const method = methods.find((m) => m.provider === active) ?? null
   const sandbox = checkout.env === "sandbox"
+  const tabs: Tab[] = [...methods.map((m) => m.provider), ...(shareable ? [LINK_TAB] : [])]
 
   return (
     <div className="flex flex-col gap-3 px-4 pb-4">
@@ -73,23 +85,23 @@ export function NativeCheckout({
         </span>
       </div>
 
-      {methods.length > 1 && (
+      {tabs.length > 1 && (
         <div className="grid auto-cols-fr grid-flow-col gap-2" role="tablist">
-          {methods.map((m) => (
+          {tabs.map((tab) => (
             <button
-              key={m.provider}
+              key={tab}
               type="button"
               role="tab"
-              aria-selected={m.provider === active}
-              onClick={() => setPicked(m.provider)}
+              aria-selected={tab === active}
+              onClick={() => setPicked(tab)}
               className={cn(
-                "rounded-2xl border-2 px-3 py-2.5 text-[15px] font-extrabold text-white transition",
-                m.provider === active
+                "rounded-2xl border-2 px-2 py-2.5 text-[15px] font-extrabold text-white transition",
+                tab === active
                   ? "border-white bg-white/20"
                   : "border-transparent bg-white/10"
               )}
             >
-              {t(METHOD_LABEL[m.provider])}
+              {t(METHOD_LABEL[tab])}
             </button>
           ))}
         </div>
@@ -120,14 +132,23 @@ export function NativeCheckout({
             onFailed={(reason) => onAttemptFailed?.(reason, "monobank")}
           />
         )}
-        {!method && (
+        {active === LINK_TAB && shareable && (
+          <LinkPane
+            url={shareable}
+            expiresAt={checkout.expires_at}
+            amount={formatCents(checkout.amount.due, checkout.amount.currency)}
+          />
+        )}
+        {!method && active !== LINK_TAB && (
           <div className="flex items-center justify-center py-6">
             <Spinner className="size-8 text-brand" />
           </div>
         )}
       </div>
 
-      {sandbox && active && <SandboxSimulate checkoutId={checkout.id} provider={active} />}
+      {sandbox && active && active !== LINK_TAB && (
+        <SandboxSimulate checkoutId={checkout.id} provider={active} />
+      )}
 
       {paymentLink && (
         <a
@@ -144,10 +165,147 @@ export function NativeCheckout({
   )
 }
 
-const METHOD_LABEL: Record<CheckoutMethod["provider"], MessageKey> = {
+const LINK_TAB = "link" as const
+type Tab = CheckoutMethod["provider"] | typeof LINK_TAB
+
+const METHOD_LABEL: Record<Tab, MessageKey> = {
   stripe: "payment.method.card",
   paypal: "payment.method.paypal",
   monobank: "payment.method.monobank",
+  link: "payment.method.link",
+}
+
+/* ------------------------------------------------------------------ link */
+
+/**
+ * The hosted page's URL, to be paid somewhere else: copy, the system share
+ * sheet where the browser has one (phones), and a QR code on wide screens —
+ * a laptop's sheet scanned by the phone in your hand. Nothing here waits for
+ * the payment: the sheet's checkout poll does.
+ */
+function LinkPane({
+  url,
+  expiresAt,
+  amount,
+}: {
+  url: string
+  expiresAt: number | null
+  amount: string
+}) {
+  const { t } = useT()
+  const field = useRef<HTMLInputElement>(null)
+  const [copied, setCopied] = useState(false)
+  const [copyFailed, setCopyFailed] = useState(false)
+  const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function"
+
+  useEffect(() => {
+    if (!copied) return
+    const timer = setTimeout(() => setCopied(false), 2000)
+    return () => clearTimeout(timer)
+  }, [copied])
+
+  const copy = async () => {
+    setCopyFailed(false)
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+    } catch {
+      // no clipboard (an insecure context, a denied permission): the text
+      // is selected so a long-press or Ctrl+C copies it
+      field.current?.select()
+      setCopyFailed(true)
+    }
+  }
+
+  const share = async () => {
+    try {
+      await navigator.share({
+        title: t("payment.link.shareTitle"),
+        text: t("payment.link.shareText", { amount }),
+        url,
+      })
+    } catch {
+      // dismissed, or the share target failed: nothing to report
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="text-[15px] font-extrabold text-navy">{t("payment.link.title")}</p>
+        <p className="mt-1 text-[13px] font-medium text-navy-soft">{t("payment.link.body")}</p>
+      </div>
+
+      <div className="flex gap-2">
+        <input
+          ref={field}
+          readOnly
+          value={url}
+          onFocus={(e) => e.currentTarget.select()}
+          aria-label={t("payment.link.title")}
+          className="min-w-0 flex-1 rounded-xl border border-navy/15 bg-navy/5 px-3 py-2.5 text-[13px] font-semibold text-navy outline-none focus:border-brand"
+        />
+        <Button variant="outline" size="lg" className="shrink-0 gap-1.5" onClick={() => void copy()}>
+          {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+          {copied ? t("payment.link.copied") : t("payment.link.copy")}
+        </Button>
+      </div>
+      {copyFailed && (
+        <p className="text-[12px] font-semibold text-navy-soft">{t("payment.link.copyFailed")}</p>
+      )}
+
+      {canShare && (
+        <Button variant="brand" size="xl" className="w-full gap-2" onClick={() => void share()}>
+          <Share2 className="size-5" />
+          {t("payment.link.share")}
+        </Button>
+      )}
+
+      <LinkQr url={url} />
+
+      {expiresAt ? (
+        <p className="text-center text-[12px] font-medium text-navy-soft">
+          {t("payment.link.validUntil", { date: formatDotDateTime(expiresAt) })}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+/**
+ * The link as a QR code, wide screens only (on a phone the share sheet is
+ * the way). The encoder is loaded when the code is first shown, so the
+ * checkout pays nothing for it until then.
+ */
+function LinkQr({ url }: { url: string }) {
+  const { t } = useT()
+  const [svg, setSvg] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void import("uqr")
+      .then(({ renderSVG }) => {
+        if (!cancelled) setSvg(renderSVG(url, { ecc: "M", border: 1 }))
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [url])
+
+  if (!svg) return null
+  return (
+    <div className="hidden flex-col items-center gap-1.5 pt-1 sm:flex">
+      <div
+        role="img"
+        aria-label={t("payment.link.qr")}
+        className="size-40 [&_svg]:size-full"
+        // our own encoder's SVG of our own URL
+        dangerouslySetInnerHTML={{ __html: svg }}
+      />
+      <p className="text-[12px] font-medium text-navy-soft">{t("payment.link.qr")}</p>
+    </div>
+  )
 }
 
 /* ---------------------------------------------------------------- stripe */

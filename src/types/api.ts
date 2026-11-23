@@ -206,7 +206,8 @@ export interface WalletTransaction {
   split: { balance: number | null; bonuses: number | null } | null
   status: WalletEntryStatus
   currency: string
-  order_id: number | null
+  /** the order's public id (what GET /public/me/orders/:id takes), or null */
+  order_id: string | null
   description: string | null
   created_at: number | null
   updated_at: number | null
@@ -285,7 +286,6 @@ export interface ReferralEarning {
   level: number
   amount: number
   currency: string
-  order_id: number
   invited_display_name: string | null
   source: string
   created_at: number
@@ -299,13 +299,12 @@ export interface ReferralLookup {
 }
 
 /**
- * GET /public/me/vehicles. Signed in: the account's saved cars (vehicles
- * table, numeric id). Guest: the distinct plates on the orders this session
- * placed itself — no DB row, so `id` is the string "<country>:<plate>".
- * Treat `id` as opaque either way.
+ * GET /public/me/vehicles. Signed in: the account's saved cars. Guest: the
+ * distinct plates on the orders this session placed itself. `id` is an
+ * opaque string either way.
  */
 export interface Vehicle {
-  id: number | string
+  id: string
   plate: string
   country: string
   vin_code: string | null
@@ -398,11 +397,11 @@ export interface OrderCompany {
 /**
  * GET /public/me/companies — a company the account has invoiced through, for
  * the "invoice for a company" picker. `tax_id` is the form the customer last
- * typed, ready to go straight back onto an order. Guests get a string id
- * ("<country>:<tax id>") since there is no companies row behind their entries.
+ * typed, ready to go straight back onto an order. `id` is an opaque string
+ * (signed in or guest).
  */
 export interface BillingCompany {
-  id: number | string
+  id: string
   name: string | null
   tax_id: string
   address: string | null
@@ -853,14 +852,14 @@ export interface CreateOrderCompany {
 }
 
 /**
- * POST /public/me/orders returns slim order stubs, not the full read shape —
- * verified live: { id, custom_id, currency, profit, vat_fee, flex }. Fetch
- * GET /public/me/orders/:id for the full order.
+ * POST /public/me/orders returns slim order stubs, not the full read shape:
+ * { id, custom_id, flex, type? } (the partner's profit / vat_fee / currency
+ * are not sent to apps since 2026-11-23). Fetch GET /public/me/orders/:id
+ * for the full order.
  */
 export interface CreatedOrderStub {
   id: string
   custom_id: string
-  currency?: string
   flex?: { type?: string; enabled?: boolean; price?: number } | null
   /** "insurance" for a Green Card line's own order; absent for a road product */
   type?: "insurance"

@@ -4,7 +4,8 @@ import type { ApiEnvelope, ApiError, TokenPayload } from "@/types/api"
 /**
  * Thin fetch client for the vignette.id public API.
  *
- * - Always sends `X-Client-Id` (public client).
+ * - Always sends `X-Client-Id` (public client) and this build's
+ *   `X-App-Version` / `X-App-Build` (vite.config.ts).
  * - Sends `Authorization: Bearer <access JWT>` when a session exists.
  * - Access tokens live 15 min: refresh is done proactively when the token is
  *   within 30s of expiry, and reactively (single-flight) on a 401.
@@ -20,6 +21,18 @@ export const API_BASE: string =
 
 export const CLIENT_ID: string =
   import.meta.env.VITE_VIGNETTE_CLIENT_ID || ""
+
+/** Who is calling: the client, plus this build's version and build number
+ *  (the API reads them for version gates and the order rows). */
+export const CLIENT_HEADERS: Record<string, string> = {
+  "X-Client-Id": CLIENT_ID,
+  ...(import.meta.env.VITE_APP_VERSION
+    ? { "X-App-Version": String(import.meta.env.VITE_APP_VERSION) }
+    : {}),
+  ...(import.meta.env.VITE_APP_BUILD
+    ? { "X-App-Build": String(import.meta.env.VITE_APP_BUILD) }
+    : {}),
+}
 
 export class ApiRequestError extends Error {
   type: string
@@ -104,7 +117,7 @@ async function refreshAccessToken(): Promise<string | null> {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Client-Id": CLIENT_ID,
+          ...CLIENT_HEADERS,
         },
         body: JSON.stringify({ refresh_token: tokens.refreshToken }),
       })
@@ -167,7 +180,7 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     }
   }
 
-  const headers: Record<string, string> = { "X-Client-Id": CLIENT_ID }
+  const headers: Record<string, string> = { ...CLIENT_HEADERS }
   if (body !== undefined) headers["Content-Type"] = "application/json"
   if (auth) {
     // sessionless (first launch, or the silent guest bootstrap failed):
@@ -219,7 +232,7 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
 
 /** Binary endpoints (e.g. /public/me/apple-pass) — returns the raw blob. */
 export async function apiBlob(path: string): Promise<Blob> {
-  const headers: Record<string, string> = { "X-Client-Id": CLIENT_ID }
+  const headers: Record<string, string> = { ...CLIENT_HEADERS }
   Object.assign(headers, await authHeader())
   const res = await fetch(API_BASE + path, { headers })
   if (!res.ok) {

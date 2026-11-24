@@ -20,11 +20,10 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useSessionScope } from "@/queries/session"
 import { useDeleteDocument, useSaveDocument, useSavedDocumentsOf } from "@/queries/documents"
 import { SavedDocumentPicker } from "@/components/order/SavedDocuments"
-import type { SavedDocument, SavedDocumentType } from "@/types/api"
+import type { SavedDocument } from "@/types/api"
 import { Flag } from "@/lib/countries"
 import { dayStart, formatDate, formatPrice } from "@/lib/format"
 import { ApiRequestError, apiErrorMessage } from "@/lib/api"
@@ -95,9 +94,10 @@ const FIELD =
   "h-auto w-full rounded-xl border-0 bg-[#f1f4f8] px-3.5 py-3 text-[15px] font-semibold text-navy shadow-none placeholder:text-navy-soft placeholder:font-semibold focus-visible:ring-brand/40 md:text-[15px]"
 
 const TAX_ID = /^\d{10}$/
-const PHONE = /^\+?[0-9]{10,15}$/
 const PASSPORT_SERIES = /^[A-Za-z]{2}$/
 const PASSPORT_NUMBER = /^\d{6}$/
+// a foreign passport's issuing authority: its 4-digit code
+const PASSPORT_AUTHORITY = /^\d{4}$/
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 const CALCULATE_DEBOUNCE_MS = 600
 
@@ -150,7 +150,6 @@ interface Form {
   last_name_latin: string
   tax_id: string
   birth: string
-  phone: string
   city: string
   passport_series: string
   passport_number: string
@@ -424,7 +423,6 @@ function GreenCardBody({
       last_name_latin: i?.last_name_latin ?? "",
       tax_id: i?.tax_id ?? "",
       birth: i?.birth ?? "",
-      phone: i?.phone ?? "",
       city: i?.city ?? "",
       passport_series: i?.passport?.series ?? "",
       passport_number: i?.passport?.number ?? "",
@@ -443,18 +441,16 @@ function GreenCardBody({
   // save, and which passport the series and number describe —
   // both share the 2-letter + 6-digit shape the insurer takes.
   const { guest } = useSessionScope()
-  const savedPassports = useSavedDocumentsOf(["foreign_passport", "internal_passport"])
+  // the FOREIGN passport only: a Green Card is never written on an internal
+  // passport or an ID card (verified 2026-11-23)
+  const savedPassports = useSavedDocumentsOf(["foreign_passport"])
   const saveDocument = useSaveDocument()
   const deleteDocument = useDeleteDocument()
-  const [documentType, setDocumentType] = useState<SavedDocumentType>("foreign_passport")
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null)
   const applySavedDocument = (document: SavedDocument) => {
     setSelectedDocumentId(document.id)
-    setDocumentType(document.document_type)
-    const [series, number] =
-      document.document_type === "internal_passport"
-        ? [document.series ?? "", document.number]
-        : [document.number.slice(0, 2), document.number.slice(2)]
+    // a foreign passport's number is its 2 letters and 6 digits
+    const [series, number] = [document.number.slice(0, 2), document.number.slice(2)]
     setForm((f) => ({
       ...f,
       first_name_latin: document.first_name ?? f.first_name_latin,
@@ -471,13 +467,10 @@ function GreenCardBody({
     }))
   }
   const holderDocument = () => ({
-    document_type: documentType,
+    document_type: "foreign_passport" as const,
     country: "ua",
-    series: documentType === "internal_passport" ? form.passport_series.toUpperCase() : null,
-    number:
-      documentType === "internal_passport"
-        ? form.passport_number
-        : `${form.passport_series.toUpperCase()}${form.passport_number}`,
+    series: null,
+    number: `${form.passport_series.toUpperCase()}${form.passport_number}`,
     first_name: form.first_name_latin.trim() || null,
     last_name: form.last_name_latin.trim() || null,
     first_name_local: form.first_name.trim() || null,
@@ -567,11 +560,8 @@ function GreenCardBody({
   }, [calculateBody])
 
   const calculation = calc.status === "ok" ? calc.result : null
-  const requiresPassport = calculation?.requires_passport ?? false
-  const passportStarted = Boolean(
-    form.passport_series || form.passport_number || form.passport_issued_at || form.passport_issued_by,
-  )
-  const passportNeeded = requiresPassport || passportStarted
+  // the foreign passport is always asked (whichever insurer prices it)
+  const passportStarted = Boolean(form.passport_series || form.passport_number)
 
   // ——— the policyholder and vehicle rules, mirrored from the server ———
   const problems = useMemo(() => {
@@ -589,26 +579,28 @@ function GreenCardBody({
       if (!form[field].trim()) p[field] = "greenCard.err.required"
     }
     if (!TAX_ID.test(form.tax_id)) p.tax_id = "greenCard.err.taxId"
-    if (!PHONE.test(form.phone.replace(/[\s()-]/g, ""))) p.phone = "greenCard.err.phone"
     if (!DATE.test(form.birth)) p.birth = "greenCard.err.required"
     else if (ageOf(form.birth) < catalog.insurant.min_age) p.birth = "greenCard.err.age"
-    if (passportNeeded) {
-      if (!PASSPORT_SERIES.test(form.passport_series)) p.passport_series = "greenCard.err.passportSeries"
-      if (!PASSPORT_NUMBER.test(form.passport_number)) p.passport_number = "greenCard.err.passportNumber"
-      if (!DATE.test(form.passport_issued_at)) p.passport_issued_at = "greenCard.err.required"
-      else if (form.passport_issued_at > todayIso() || (DATE.test(form.birth) && form.passport_issued_at < form.birth))
-        p.passport_issued_at = "greenCard.err.issuedAt"
-      if (!form.passport_issued_by.trim()) p.passport_issued_by = "greenCard.err.required"
-    }
+    if (!PASSPORT_SERIES.test(form.passport_series)) p.passport_series = "greenCard.err.passportSeries"
+    if (!PASSPORT_NUMBER.test(form.passport_number)) p.passport_number = "greenCard.err.passportNumber"
+    // the issue date and the authority are optional; checked when given
+    if (
+      form.passport_issued_at &&
+      (!DATE.test(form.passport_issued_at) ||
+        form.passport_issued_at > todayIso() ||
+        (DATE.test(form.birth) && form.passport_issued_at < form.birth))
+    )
+      p.passport_issued_at = "greenCard.err.issuedAt"
+    if (form.passport_issued_by.trim() && !PASSPORT_AUTHORITY.test(form.passport_issued_by.trim()))
+      p.passport_issued_by = "greenCard.err.passportAuthority"
     return p
-  }, [form, catalog, totalWeight, seats, passportNeeded])
+  }, [form, catalog, totalWeight, seats])
 
   const canSave = calculation !== null && Object.keys(problems).length === 0 && category !== null
 
   const save = () => {
     setTouched(true)
     if (!canSave || !calculation || !category || !calc.body) return
-    const phone = form.phone.replace(/[\s()-]/g, "")
     // the holder's passport is kept for the next policy (signed-in
     // accounts), when one was typed; a failed save never blocks the policy
     if (!guest && passportStarted) {
@@ -641,18 +633,13 @@ function GreenCardBody({
           last_name_latin: form.last_name_latin.trim(),
           tax_id: form.tax_id,
           birth: form.birth,
-          phone: phone.startsWith("+") ? phone : `+${phone}`,
           city: form.city.trim(),
-          ...(passportNeeded
-            ? {
-                passport: {
-                  series: form.passport_series.toUpperCase(),
-                  number: form.passport_number,
-                  issued_at: form.passport_issued_at,
-                  issued_by: form.passport_issued_by.trim(),
-                },
-              }
-            : {}),
+          passport: {
+            series: form.passport_series.toUpperCase(),
+            number: form.passport_number,
+            ...(form.passport_issued_at ? { issued_at: form.passport_issued_at } : {}),
+            ...(form.passport_issued_by.trim() ? { issued_by: form.passport_issued_by.trim() } : {}),
+          },
         },
         },
       },
@@ -866,25 +853,15 @@ function GreenCardBody({
             {field("last_name", { label: t("greenCard.lastNameLocal") })}
             {field("tax_id", { label: t("greenCard.taxId"), inputMode: "numeric", maxLength: 10 })}
             {dateField("birth", t("greenCard.birth"))}
-            {field("phone", { label: t("greenCard.phone"), type: "tel", autoComplete: "tel", placeholder: "+380 93 123 45 67" })}
             {field("city", { label: t("greenCard.city"), autoComplete: "address-level2" })}
           </div>
           <p className="mt-3 mb-1.5 px-1 text-xs font-bold tracking-wider text-navy-soft uppercase">
             {t("greenCard.passport")}{" "}
             <span className="font-semibold normal-case tracking-normal">
-              {requiresPassport ? t("greenCard.passportRequired") : t("greenCard.passportOptional")}
+              {t("greenCard.passportRequired")}
             </span>
           </p>
-          <ToggleGroup
-            type="single"
-            value={documentType}
-            onValueChange={(value) => value && setDocumentType(value as SavedDocumentType)}
-            className="mb-2 justify-start"
-            aria-label={t("documents.type.label")}
-          >
-            <ToggleGroupItem value="foreign_passport">{t("documents.type.foreign_passport")}</ToggleGroupItem>
-            <ToggleGroupItem value="internal_passport">{t("documents.type.internal_passport")}</ToggleGroupItem>
-          </ToggleGroup>
+          <p className="mb-2 px-1 text-sm font-semibold text-navy">{t("documents.type.foreign_passport")}</p>
           <div className="grid grid-cols-2 gap-2">
             {field("passport_series", { label: t("greenCard.passportSeries"), className: "uppercase", maxLength: 2, placeholder: "AA" })}
             {field("passport_number", { label: t("greenCard.passportNumber"), inputMode: "numeric", maxLength: 6, placeholder: "123456" })}

@@ -258,6 +258,7 @@
   "greenCard.err.age": "Ubezpieczający musi mieć co najmniej 18 lat",
   "greenCard.err.passportSeries": "2 litery łacińskie",
   "greenCard.err.passportNumber": "6 cyfr",
+  "greenCard.err.passportAuthority": "4-cyfrowy kod z paszportu",
   "greenCard.err.issuedAt": "Między datą urodzenia a dzisiaj",
   "greenCard.fixFields": "Popraw zaznaczone pola, aby dodać Zieloną Kartę.",
   "greenCard.waitPrice": "Poczekaj na cenę, a potem dodaj Zieloną Kartę.",

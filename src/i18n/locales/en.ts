@@ -299,6 +299,7 @@ export const en = {
   "greenCard.err.age": "The policyholder must be at least 18",
   "greenCard.err.passportSeries": "2 Latin letters",
   "greenCard.err.passportNumber": "6 digits",
+  "greenCard.err.passportAuthority": "The 4-digit code from the passport",
   "greenCard.err.issuedAt": "Between the date of birth and today",
   "greenCard.fixFields": "Fix the highlighted fields to add the Green Card.",
   "greenCard.waitPrice": "Wait for the price, then add the Green Card.",

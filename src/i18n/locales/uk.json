@@ -266,6 +266,7 @@
   "greenCard.err.age": "Страхувальнику має бути щонайменше 18 років",
   "greenCard.err.passportSeries": "2 латинські літери",
   "greenCard.err.passportNumber": "6 цифр",
+  "greenCard.err.passportAuthority": "4-значний код із паспорта",
   "greenCard.err.issuedAt": "Між датою народження та сьогодні",
   "greenCard.fixFields": "Виправте позначені поля, щоб додати Зелену картку.",
   "greenCard.waitPrice": "Дочекайтеся ціни, потім додайте Зелену картку.",

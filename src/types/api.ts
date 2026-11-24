@@ -649,9 +649,14 @@ export interface GreenCardLineInsurance {
     last_name_latin: string
     tax_id: string
     birth: string
-    phone: string
     city: string
-    passport?: { series: string; number: string; issued_at: string; issued_by: string }
+    /**
+     * The insurant's FOREIGN passport — always (both insurers). Series (2
+     * Latin letters) and number (6 digits) are required; the issue date
+     * (YYYY-MM-DD) and the 4-digit authority code are optional. No phone:
+     * every policy carries ours (since 2026-11-23).
+     */
+    passport: { series: string; number: string; issued_at?: string; issued_by?: string }
   }
 }
 

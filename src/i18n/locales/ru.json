@@ -258,6 +258,7 @@
   "greenCard.err.age": "Страхователю должно быть не меньше 18 лет",
   "greenCard.err.passportSeries": "2 латинские буквы",
   "greenCard.err.passportNumber": "6 цифр",
+  "greenCard.err.passportAuthority": "4-значный код из паспорта",
   "greenCard.err.issuedAt": "Между датой рождения и сегодня",
   "greenCard.fixFields": "Исправьте отмеченные поля, чтобы добавить Зелёную карту.",
   "greenCard.waitPrice": "Дождитесь цены, затем добавьте Зелёную карту.",

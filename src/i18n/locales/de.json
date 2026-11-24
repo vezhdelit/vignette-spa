@@ -244,6 +244,7 @@
   "greenCard.err.age": "Der Versicherungsnehmer muss mindestens 18 sein",
   "greenCard.err.passportSeries": "2 lateinische Buchstaben",
   "greenCard.err.passportNumber": "6 Ziffern",
+  "greenCard.err.passportAuthority": "Der 4-stellige Code aus dem Pass",
   "greenCard.err.issuedAt": "Zwischen Geburtsdatum und heute",
   "greenCard.fixFields": "Korrigieren Sie die markierten Felder, um die Grüne Karte hinzuzufügen.",
   "greenCard.waitPrice": "Warten Sie auf den Preis, dann die Grüne Karte hinzufügen.",

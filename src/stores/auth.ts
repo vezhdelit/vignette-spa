@@ -4,6 +4,7 @@ import { api, apiResult, configureApi, type StoredTokens } from "@/lib/api"
 import { clearPendingInviteCode, getPendingInviteCode } from "@/stores/invite"
 import type {
   EmailRequiredResult,
+  LinkEmailResult,
   OtpStartResult,
   TokenPayload,
   TokenUser,
@@ -29,6 +30,21 @@ interface AuthState {
   user: TokenUser | null
   /** booting = restoring/creating the initial session */
   status: "booting" | "ready"
+  /**
+   * Ask once "Bought with us before?": set by a social sign-in that CREATED
+   * an account on an Apple Hide My Email relay, cleared by the answer.
+   */
+  linkPrompt: boolean
+  dismissLinkPrompt: () => void
+  /**
+   * POST /public/me/identities/email — link the verified address to this
+   * Hide My Email account. The answer is a NEW token pair (when the address
+   * already had an account, it is that account's); swapped in here.
+   */
+  linkEmailIdentity: (args: {
+    challengeId: string
+    code: string
+  }) => Promise<LinkEmailResult["link"]>
 
   bootstrap: () => Promise<void>
   /** single-flight: create a guest session if there is none */
@@ -83,6 +99,24 @@ export const useAuthStore = create<AuthState>()(
       tokens: null,
       user: null,
       status: "booting",
+      linkPrompt: false,
+
+      dismissLinkPrompt() {
+        set({ linkPrompt: false })
+      },
+
+      async linkEmailIdentity({ challengeId, code }) {
+        const result = await apiResult<LinkEmailResult>(
+          "/public/me/identities/email",
+          {
+            method: "POST",
+            body: { challenge_id: challengeId, code, device_name: deviceName() },
+          }
+        )
+        // the old session is already over on the server: swap before anything else
+        set({ tokens: toStoredTokens(result), user: result.user, linkPrompt: false })
+        return result.link
+      },
 
       async bootstrap() {
         if (!get().tokens) {
@@ -184,7 +218,13 @@ export const useAuthStore = create<AuthState>()(
         }
 
         const tokens = result as TokenPayload
-        set({ tokens: toStoredTokens(tokens), user: tokens.user })
+        set({
+          tokens: toStoredTokens(tokens),
+          user: tokens.user,
+          // a new account on Apple's relay address: ask once whether they
+          // bought with another email (never forced — App Review 4.8)
+          linkPrompt: Boolean(tokens.user.created && tokens.user.private_email),
+        })
         clearPendingInviteCode()
         return { status: "ok" }
       },
@@ -210,7 +250,7 @@ export const useAuthStore = create<AuthState>()(
 
       async logout() {
         const refreshToken = get().tokens?.refreshToken
-        set({ tokens: null, user: null })
+        set({ tokens: null, user: null, linkPrompt: false })
         if (refreshToken) {
           try {
             await api("/public/auth/logout", {
@@ -254,7 +294,11 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "vignette-auth",
-      partialize: (state) => ({ tokens: state.tokens, user: state.user }),
+      partialize: (state) => ({
+        tokens: state.tokens,
+        user: state.user,
+        linkPrompt: state.linkPrompt,
+      }),
     }
   )
 )

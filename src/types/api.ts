@@ -35,6 +35,35 @@ export interface TokenUser {
   id: string
   email: string | null
   guest: boolean
+  /** true only on the sign-in that created the account */
+  created?: boolean
+  /** the address is an Apple Hide My Email relay: offer to link the real one */
+  private_email?: boolean
+}
+
+/**
+ * One way the account signs in (GET /public/me `identities`). `email` is
+ * derived from a real account address and has no id (it is the account's
+ * key); apple / google are linked identities. Order: email, apple, google.
+ */
+export interface Identity {
+  id?: string
+  provider: "email" | "apple" | "google"
+  email: string | null
+  /** apple / google only: the identity's address is a Hide My Email relay */
+  private_email?: boolean
+  linked_at?: number | null
+}
+
+/** POST /public/me/identities/email — a new pair for the account the person is now in */
+export interface LinkEmailResult extends TokenPayload {
+  link: {
+    /** linked: this account took the address · merged: moved into the account that had it */
+    result: "linked" | "merged"
+    /** paid vignettes that address holds */
+    orders: number
+  }
+  identities: Identity[]
 }
 
 export interface TokenPayload {
@@ -86,6 +115,9 @@ export interface Me {
   id: string
   email: string | null
   guest: boolean
+  /** an Apple Hide My Email relay address (see Identity) */
+  private_email?: boolean
+  identities?: Identity[]
   created_at: number | null
   /** true from the first submitted rating on; never goes back */
   has_rated: boolean

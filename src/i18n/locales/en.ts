@@ -631,6 +631,26 @@ export const en = {
   "account.rate.subtitle": "Tell us how we're doing",
   "account.rate.subtitleRated": "Thanks for rating — change your mind any time",
 
+  /* ------------------------------------- link an email (Hide My Email) */
+  "account.identity.email": "Email",
+  "account.identity.apple": "Apple",
+  "account.identity.google": "Google",
+  "account.linkEmail.promptTitle": "Bought with us before?",
+  "account.linkEmail.promptBody": "If you bought vignettes with another email, connect it to see them here.",
+  "account.linkEmail.promptYes": "Yes, connect my email",
+  "account.linkEmail.promptNo": "No, I’m new here",
+  "account.linkEmail.rowTitle": "Bought with another email?",
+  "account.linkEmail.rowSubtitle": "Connect it to see those vignettes here.",
+  "account.linkEmail.sheetTitle": "Connect your email",
+  "account.linkEmail.sheetBody": "Enter the email you bought vignettes with. We’ll send a code to check it’s yours, then everything you bought sits in one account.",
+  "account.linkEmail.connect": "Connect",
+  "account.linkEmail.connecting": "Connecting your email…",
+  "account.linkEmail.skip": "Skip",
+  "account.linkEmail.doneTitle": "Email connected",
+  "account.linkEmail.doneMerged": { one: "{count} vignette bought with {email} is now in this account.", other: "{count} vignettes bought with {email} are now in this account." },
+  "account.linkEmail.doneLinked": "Receipts and order emails now go to {email}.",
+  "account.linkEmail.walletNotEmpty": "This account’s wallet still holds money. Spend it first, or contact support to move it.",
+
   /* ------------------------------------------------------ delete account */
   "account.delete.title": "Delete account",
   "account.delete.subtitle": "Remove your personal data from Vignette ID",

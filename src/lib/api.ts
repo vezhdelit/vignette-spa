@@ -105,6 +105,20 @@ export function configureApi(next: ApiHooks) {
 
 let refreshInFlight: Promise<string | null> | null = null
 
+/**
+ * The session a request or refresh used is gone — but only drop it if it is
+ * still the CURRENT session. Linking an email (POST /public/me/identities/email)
+ * or signing in swaps the tokens while other requests are in flight with the
+ * old ones; their 401 is about the old session, not the new one.
+ */
+function sessionLost(used: { accessToken?: string; refreshToken?: string }) {
+  const current = hooks?.getTokens()
+  if (!current) return
+  if (used.refreshToken && current.refreshToken !== used.refreshToken) return
+  if (used.accessToken && current.accessToken !== used.accessToken) return
+  hooks?.onSessionLost()
+}
+
 async function refreshAccessToken(): Promise<string | null> {
   if (refreshInFlight) return refreshInFlight
 
@@ -124,7 +138,7 @@ async function refreshAccessToken(): Promise<string | null> {
       const body = (await res.json()) as ApiEnvelope<TokenPayload>
       if (!res.ok || body.error) {
         // invalid_grant — revoked/expired/reused: the session is gone
-        hooks?.onSessionLost()
+        sessionLost({ refreshToken: tokens.refreshToken })
         return null
       }
       hooks?.onTokens(body.result)
@@ -134,7 +148,7 @@ async function refreshAccessToken(): Promise<string | null> {
       // tokens are single-use with family revocation on reuse (integration
       // guide: "never retry a refresh request with the same token after a
       // timeout"), so the only safe move is to drop the session.
-      hooks?.onSessionLost()
+      sessionLost({ refreshToken: tokens.refreshToken })
       return null
     } finally {
       refreshInFlight = null
@@ -222,7 +236,13 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
       if (fresh) return api<T>(path, { ...options, _retried: true })
     }
     if (res.status === 401 && envelope.error?.type === "session_revoked") {
-      hooks?.onSessionLost()
+      const sent = headers.Authorization?.replace(/^Bearer /, "")
+      const current = hooks?.getTokens()?.accessToken
+      // swapped while this request was in flight: retry once on the new one
+      if (auth && sent && current && current !== sent && !options._retried) {
+        return api<T>(path, { ...options, _retried: true })
+      }
+      sessionLost({ accessToken: sent })
     }
     throw new ApiRequestError(res.status, envelope.error, retryAfterSeconds(res))
   }

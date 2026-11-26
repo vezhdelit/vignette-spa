@@ -135,7 +135,8 @@ export function TopUpDrawer({
       // failed top-up with its own reason, so abandonment and a decline stay
       // tellable apart in the same funnel.
       track("wallet.topup_failed", { amount_eur: eur(amount), reason: "abandoned" })
-      // best-effort: the hourly sweep closes it either way
+      // best-effort: the server's sweep closes it at its 30-minute deadline
+      // either way (checkout.expires_at, as an order's)
       void cancelCheckout.mutateAsync(checkout.id).catch(() => {})
     }
     setStep("amount")

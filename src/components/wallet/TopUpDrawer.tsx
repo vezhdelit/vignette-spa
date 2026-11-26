@@ -61,7 +61,7 @@ export function TopUpDrawer({
   const cancelCheckout = useCancelCheckout()
   // the checkout read while paying — it asks the provider and credits the
   // wallet the moment the money lands
-  const { paid, checkout: credited } = useCheckoutPaid(
+  const { paid, status, checkout: credited } = useCheckoutPaid(
     checkout?.id ?? null,
     step === "paying"
   )
@@ -131,13 +131,20 @@ export function TopUpDrawer({
    */
   const close = () => {
     if (step === "paying" && checkout !== null && !paid) {
-      // Closed with the checkout open and nothing credited. Counted as a
-      // failed top-up with its own reason, so abandonment and a decline stay
-      // tellable apart in the same funnel.
-      track("wallet.topup_failed", { amount_eur: eur(amount), reason: "abandoned" })
-      // best-effort: the server's sweep closes it at its 30-minute deadline
-      // either way (checkout.expires_at, as an order's)
-      void cancelCheckout.mutateAsync(checkout.id).catch(() => {})
+      if (status === "expired") {
+        // The 30 minutes ran out with the sheet up (checkout.expires_at, as
+        // an order's): its own reason, not an abandonment — and nothing to
+        // cancel, the server already closed it or will within the minute.
+        track("wallet.topup_failed", { amount_eur: eur(amount), reason: "expired" })
+      } else {
+        // Closed with the checkout open and nothing credited. Counted as a
+        // failed top-up with its own reason, so abandonment and a decline
+        // stay tellable apart in the same funnel.
+        track("wallet.topup_failed", { amount_eur: eur(amount), reason: "abandoned" })
+        // best-effort: the server's sweep closes it at its 30-minute
+        // deadline either way
+        void cancelCheckout.mutateAsync(checkout.id).catch(() => {})
+      }
     }
     setStep("amount")
     setCheckout(null)
